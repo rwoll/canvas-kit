@@ -1,0 +1,200 @@
+# Reusable workflow: build, check, and publish a Copilot plugin marketplace made
+# with canvas-kit. Call it from a workflow in your marketplace repository, pinned
+# to a release tag or commit:
+#
+#   on: { push: { branches: [main] } }
+#   permissions: { contents: write }
+#   jobs:
+#     publish:
+#       uses: rwoll/canvas-kit/.github/workflows/marketplace.yml@<tag or commit>
+#       with:
+#         environment: stable   # optional: approve each publish
+#
+# The actions it uses are locked in this repository's actions.lock, so it also
+# runs where a policy requires lockfiles.
+#
+# Two jobs keep the write token away from your dependencies:
+# - build runs `canvas-kit release --bundle` with a read-only token: a
+#   frozen-lockfile install and the marketplace's `check` script (or `build`) in a
+#   clean worktree, then the next publish-branch commit as a git bundle, only when
+#   the output changed.
+# - push holds `contents: write`, runs no project code, and fast-forwards the
+#   publish branch (default `stable`) to that commit after checking it.
+name: Publish marketplace
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Folder with marketplace.config.json, relative to the repository root.
+        type: string
+        default: .
+      node-version:
+        description: Node.js version.
+        type: string
+        default: '24'
+      playwright:
+        description: Run each package's `playwright:install` script first, for checks that run browser tests.
+        type: boolean
+        default: false
+      dry-run:
+        description: Build and check, but do not push the publish branch.
+        type: boolean
+        default: false
+      environment:
+        description: >-
+          GitHub environment for the push job, such as `stable`. Give it required
+          reviewers to approve each publish, and limit it to your source branch.
+          Empty publishes without an environment.
+        type: string
+        default: ''
+      source-branch:
+        description: The only branch that publishes. Defaults to the repository's default branch.
+        type: string
+        default: ''
+      publish-branch:
+        description: The branch to publish to; must match `publishBranch` in marketplace.config.json.
+        type: string
+        default: stable
+    outputs:
+      commit:
+        description: The commit published to the publish branch, or empty when nothing changed.
+        value: ${{ jobs.build.outputs.commit }}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: canvas-kit-marketplace-${{ github.repository }}-${{ inputs.working-directory }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      commit: ${{ steps.release.outputs.commit }}
+      branch: ${{ steps.release.outputs.branch }}
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          # Full history so the release can verify it never publishes an older source.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          package-manager-cache: false
+
+      # Installs the pnpm version pinned by package.json "packageManager". No
+      # dependency cache: other workflows on the branch can write the cache.
+      - uses: pnpm/action-setup@v6.1.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        if: inputs.playwright
+        run: pnpm -r --workspace-concurrency=1 --if-present run playwright:install --with-deps
+
+      - name: Configure Git identity
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Build, check, and prepare the publish commit
+        id: release
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          DRY_RUN: ${{ inputs.dry-run && '--dry-run' || '' }}
+          BUNDLE: ${{ runner.temp }}/canvas-kit-publish/publish.bundle
+        run: pnpm exec canvas-kit release $DRY_RUN --bundle "$BUNDLE" --github-output
+
+      - uses: actions/upload-artifact@v7.0.2
+        id: upload
+        if: steps.release.outputs.commit != ''
+        with:
+          name: canvas-kit-publish
+          path: ${{ runner.temp }}/canvas-kit-publish/publish.bundle
+          if-no-files-found: error
+          retention-days: 7
+
+  push:
+    needs: build
+    if: needs.build.outputs.commit != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: write
+    steps:
+      # A plain checkout of this run's commit, for the remote and its credentials.
+      # Nothing in it runs. No partial clone: the bundle holds only what changed,
+      # so the current publish branch must be fetched in full.
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact-id }}
+          path: ${{ runner.temp }}/canvas-kit-publish
+          merge-multiple: true
+
+      # The build job ran project and dependency code, so check its result here
+      # instead of trusting it: one new commit on top of the publish branch named
+      # by this workflow's input, built from this run's commit, which is on the
+      # source branch and newer than the source of the current publish branch.
+      # Ancestry comes from GitHub's compare API, so no history is downloaded.
+      # Nothing from the bundle is checked out or run.
+      - name: Push to the publish branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ inputs.publish-branch }}
+          BUILT_FOR: ${{ needs.build.outputs.branch }}
+          COMMIT: ${{ needs.build.outputs.commit }}
+          SOURCE: ${{ github.sha }}
+          SOURCE_BRANCH: ${{ inputs.source-branch || github.event.repository.default_branch }}
+          RUN_REF: ${{ github.ref }}
+          BUNDLE: ${{ runner.temp }}/canvas-kit-publish/publish.bundle
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          name='^[A-Za-z0-9._/-]+$'
+          sha='^[0-9a-f]{40}$'
+          # True when commit $1 is commit $2 or one of its ancestors.
+          is_ancestor() {
+            local status
+            status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$1...$2" --jq .status) || return 1
+            [ "$status" = ahead ] || [ "$status" = identical ]
+          }
+
+          [[ "$BRANCH" =~ $name && "$SOURCE_BRANCH" =~ $name && "$BRANCH" != "$SOURCE_BRANCH" ]] || fail "Invalid publish or source branch."
+          [ "$BUILT_FOR" = "$BRANCH" ] || fail "The build prepared a commit for '$BUILT_FOR', but this workflow publishes only to $BRANCH (the publish-branch input)."
+          [ "$RUN_REF" = "refs/heads/$SOURCE_BRANCH" ] || fail "Only $SOURCE_BRANCH publishes; this run is for $RUN_REF."
+          [[ "$SOURCE" =~ $sha && "$COMMIT" =~ $sha ]] || fail "Invalid commit."
+
+          tip=$(git ls-remote --exit-code origin "refs/heads/$SOURCE_BRANCH" | cut -f 1)
+          [[ "$tip" =~ $sha ]] && is_ancestor "$SOURCE" "$tip" || fail "$SOURCE is not on $SOURCE_BRANCH."
+
+          base=''
+          if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null; then
+            git fetch --quiet --depth=1 origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
+            base=$(git rev-parse "refs/remotes/origin/$BRANCH")
+            previous=$(git log -1 --format='%(trailers:key=Source-Commit,valueonly)' "$base" | sed '/^[[:space:]]*$/d')
+            [[ "$previous" =~ $sha ]] || fail "$BRANCH must name exactly one Source-Commit; it names: '$previous'."
+            is_ancestor "$previous" "$SOURCE" || fail "$BRANCH was built from $previous, which is not an ancestor of $SOURCE; refusing to publish an older source."
+          fi
+
+          git bundle verify --quiet "$BUNDLE"
+          git -c transfer.fsckObjects=true fetch --quiet "$BUNDLE" "HEAD:refs/canvas-kit/publish"
+          commit=$(git rev-parse refs/canvas-kit/publish)
+          [ "$commit" = "$COMMIT" ] || fail "The bundle holds $commit, but the build job prepared $COMMIT."
+          parents=$(git rev-list --parents -n 1 "$commit" | cut -s -d ' ' -f 2-)
+          [ "$parents" = "$base" ] || fail "$commit is not a single commit on top of $BRANCH (${base:-new branch}); a newer run may have published first."
+          sources=$(git log -1 --format='%(trailers:key=Source-Commit,valueonly)' "$commit" | sed '/^[[:space:]]*$/d')
+          [ "$sources" = "$SOURCE" ] || fail "$commit must name exactly one Source-Commit, $SOURCE; it names: $sources"
+
+          git push --quiet origin "$commit:refs/heads/$BRANCH"
+          echo "Published ${commit:0:7} to $BRANCH from ${SOURCE:0:7}." | tee -a "$GITHUB_STEP_SUMMARY"

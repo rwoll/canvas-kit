@@ -1,0 +1,549 @@
+<!doctype html>
+<!-- Source of the README hero image. Render it with `pnpm hero`. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>canvas-kit hero</title>
+    <style>
+      :root {
+        --bg: #fbfaff;
+        --fg: #17151c;
+        --muted: #6b6375;
+        --faint: #a29cad;
+        --border: #e7e3ee;
+        --panel: #ffffff;
+        --chrome: #f6f4fa;
+        --accent: #8a2be2;
+        --on-accent: #ffffff;
+        --accent-soft: #f3eafd;
+        --accent-line: #c9a3f5;
+        --code: #f6f3fb;
+        --ok: #1a7f37;
+        --err: #cf222e;
+        --shadow: 0 1px 2px rgba(23, 21, 28, 0.05), 0 10px 28px rgba(60, 30, 110, 0.09);
+        --kw: #8a2be2;
+        --str: #0a6e5c;
+      }
+      .dark {
+        --bg: #0f1016;
+        --fg: #ecebf2;
+        --muted: #a19cad;
+        --faint: #6f6a7b;
+        --border: #2a2a36;
+        --panel: #17171f;
+        --chrome: #121219;
+        --accent: #c084fc;
+        --on-accent: #17171f;
+        --accent-soft: #261b38;
+        --accent-line: #6d42a3;
+        --code: #1c1c26;
+        --ok: #3fb950;
+        --err: #ff7b72;
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 28px rgba(0, 0, 0, 0.45);
+        --kw: #d2a8ff;
+        --str: #7ee2b8;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+      }
+      body {
+        width: 1280px;
+        height: 720px;
+        position: relative;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--fg);
+        font: 13px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .mono {
+        font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      }
+
+      /* ---------- pitch ---------- */
+      .brand {
+        position: absolute;
+        left: 56px;
+        top: 40px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 700;
+        font-size: 18px;
+        letter-spacing: -0.01em;
+      }
+      .brand img {
+        width: 34px;
+        height: 34px;
+      }
+      h1 {
+        position: absolute;
+        left: 56px;
+        top: 82px;
+        margin: 0;
+        font-size: 44px;
+        line-height: 1.05;
+        letter-spacing: -0.025em;
+        font-weight: 760;
+      }
+      h1 em {
+        font-style: normal;
+        color: var(--accent);
+      }
+      .sub {
+        position: absolute;
+        left: 58px;
+        top: 136px;
+        margin: 0;
+        font-size: 17px;
+        color: var(--muted);
+      }
+
+      /* ---------- the Copilot window: the only framed surface ---------- */
+      .window {
+        position: absolute;
+        left: 56px;
+        top: 180px;
+        width: 1168px;
+        height: 282px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      .titlebar {
+        flex: none;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 12px;
+        background: var(--chrome);
+        border-bottom: 1px solid var(--border);
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+      .titlebar .light {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--border);
+      }
+      .titlebar .title {
+        position: absolute;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-weight: 600;
+        pointer-events: none;
+      }
+      .panes {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+      }
+
+      /* ---------- chat ---------- */
+      .chat {
+        flex: none;
+        width: 284px;
+        background: var(--chrome);
+        border-right: 1px solid var(--border);
+        padding: 12px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+      }
+      .chat-head {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 650;
+        font-size: 12px;
+        color: var(--muted);
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border);
+      }
+      .msg-user {
+        align-self: flex-end;
+        max-width: 85%;
+        background: var(--accent-soft);
+        border-radius: 12px 12px 4px 12px;
+        padding: 7px 10px;
+      }
+      .tools {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .tool {
+        font-size: 11px;
+        color: var(--muted);
+        background: var(--code);
+        border-radius: 6px;
+        padding: 2px 7px;
+      }
+      .chat .tool {
+        background: var(--panel);
+      }
+      .tool b {
+        color: var(--accent);
+        font-weight: 600;
+      }
+      .msg-agent {
+        max-width: 95%;
+      }
+
+      /* ---------- canvases ---------- */
+      .canvas {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .canvas + .canvas {
+        border-left: 1px solid var(--border);
+      }
+      .tab {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 12px;
+        font-size: 11.5px;
+        color: var(--muted);
+        border-bottom: 1px solid var(--border);
+      }
+      .tab .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--ok);
+      }
+      .tab .live {
+        margin-left: auto;
+        font-size: 10.5px;
+      }
+      .body {
+        padding: 12px 14px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        flex: 1;
+      }
+      .body h3 {
+        margin: 0;
+        font-size: 17px;
+        letter-spacing: -0.01em;
+      }
+      .meta {
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 8px;
+      }
+      /* The shared component, highlighted the same way in every canvas. */
+      .md {
+        position: relative;
+        margin-top: 6px;
+        padding: 14px 12px 9px;
+        border: 2px solid var(--accent);
+        border-radius: 8px;
+        background: var(--accent-soft);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      .pill {
+        display: inline-block;
+        padding: 0 7px;
+        border-radius: 4px;
+        background: var(--accent);
+        color: var(--on-accent);
+        font-size: 10.5px;
+        line-height: 17px;
+        font-weight: 700;
+      }
+      .md > .pill {
+        position: absolute;
+        top: -10px;
+        left: 10px;
+      }
+      .md h5 {
+        margin: 0 0 2px;
+        font-size: 12.5px;
+      }
+      .md p {
+        margin: 0 0 3px;
+      }
+      .md ul {
+        margin: 0;
+        padding-left: 15px;
+      }
+      .md li.task {
+        list-style: none;
+        margin-left: -15px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .md code {
+        font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+        font-size: 10.5px;
+        padding: 0 4px;
+        border-radius: 3px;
+        background: var(--panel);
+      }
+      .md a {
+        color: var(--accent);
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+      .box {
+        flex: none;
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        border: 1.5px solid var(--faint);
+        background: var(--panel);
+      }
+      .done .box {
+        background: var(--accent);
+        border-color: var(--accent);
+        position: relative;
+      }
+      .done .box::after {
+        content: '';
+        position: absolute;
+        left: 3px;
+        top: 0px;
+        width: 3px;
+        height: 6px;
+        border: solid var(--on-accent);
+        border-width: 0 2px 2px 0;
+        transform: rotate(45deg);
+      }
+      .link {
+        margin-top: auto;
+        color: var(--accent);
+        font-size: 12.5px;
+      }
+
+      /* ---------- developer experience ---------- */
+      .caption {
+        position: absolute;
+        left: 341px;
+        top: 469px;
+        margin: 0;
+        width: 883px;
+        text-align: center;
+        font-size: 12.5px;
+        color: var(--muted);
+      }
+      .caption .mono {
+        color: var(--accent);
+        font-size: 12px;
+      }
+      .caption .pill {
+        margin: 0 2px;
+        vertical-align: 1px;
+        color: var(--on-accent);
+        font-size: 11px;
+      }
+      .repo-label {
+        position: absolute;
+        left: 56px;
+        top: 504px;
+        width: 1168px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 0;
+        font-size: 11px;
+        font-weight: 650;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .repo-label::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: var(--border);
+      }
+      .repo {
+        position: absolute;
+        left: 56px;
+        top: 528px;
+        width: 1168px;
+        display: grid;
+        grid-template-columns: 1fr 1fr 1.08fr;
+      }
+      .feature {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 0 24px;
+      }
+      .feature:first-child {
+        padding-left: 0;
+      }
+      .feature:last-child {
+        padding-right: 0;
+      }
+      .feature + .feature {
+        border-left: 1px solid var(--border);
+      }
+      .feature h4 {
+        margin: 0;
+        font-size: 13px;
+      }
+      .feature h4 span {
+        color: var(--muted);
+        font-weight: 400;
+      }
+      .file {
+        color: var(--faint);
+      }
+      pre {
+        margin: 0;
+        flex: 1;
+        background: var(--code);
+        border-radius: 6px;
+        padding: 9px 12px;
+        font-size: 11.5px;
+        line-height: 1.5;
+        white-space: pre;
+        overflow: hidden;
+      }
+      .k {
+        color: var(--kw);
+      }
+      .s {
+        color: var(--str);
+      }
+      .c {
+        color: var(--faint);
+      }
+      .ok {
+        color: var(--ok);
+      }
+      .squiggle {
+        text-decoration: underline wavy var(--err);
+        text-underline-offset: 3px;
+      }
+      .error {
+        color: var(--err);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="brand"><img src="../logo.png" alt="" />canvas-kit</div>
+    <h1>Copilot canvases you can <em>change, test, and share</em>.</h1>
+    <p class="sub">Your agent writes two typed files. canvas-kit adds the secure server, live state, shared UI, tests, and publishing.</p>
+
+    <section class="window" aria-label="A Copilot window">
+      <div class="titlebar"><span class="light"></span><span class="light"></span><span class="light"></span><span class="title">✦ Copilot · octo/app</span></div>
+      <div class="panes">
+    <section class="chat" aria-label="Chat">
+      <div class="chat-head">Chat</div>
+      <div class="msg-user">Add “CI is red on main” to the octo/app release board.</div>
+      <div class="tools"><span class="tool mono"><b>open_canvas</b></span><span class="tool mono"><b>add_blocker</b></span></div>
+      <div class="msg-agent">Done, two blockers are open. Want the flaky tests and PR queue too?</div>
+      <div class="msg-user">Yes, both.</div>
+      <div class="tools"><span class="tool mono"><b>open_canvas</b> ×2</span></div>
+    </section>
+
+      <article class="canvas">
+        <div class="tab"><span class="dot"></span>Release board<span class="live">Live</span></div>
+        <div class="body">
+          <h3>Release board</h3>
+          <div class="meta">octo/app · 2 open blockers</div>
+          <div class="md">
+            <span class="pill mono">&lt;Markdown&gt;</span>
+            <h5>Before v2.4.0</h5>
+            <p>CI is <b>red</b> on <code>main</code>.</p>
+            <ul>
+              <li class="task done"><span class="box"></span>Release notes</li>
+              <li class="task"><span class="box"></span>Security sign-off</li>
+            </ul>
+          </div>
+          <div class="link">Ask the agent to investigate</div>
+        </div>
+      </article>
+      <article class="canvas">
+        <div class="tab"><span class="dot"></span>Flaky tests<span class="live">Live</span></div>
+        <div class="body">
+          <h3>Flaky tests</h3>
+          <div class="meta">Last 7 days · 2 to triage</div>
+          <div class="md">
+            <span class="pill mono">&lt;Markdown&gt;</span>
+            <h5>sign-in redirects</h5>
+            <p>Fails <b>4/20</b> when <code>SESSION_TTL</code> &lt; 5s.</p>
+            <ul>
+              <li>Likely a race in <code>refresh()</code></li>
+              <li>See <a>run 4182</a></li>
+            </ul>
+          </div>
+          <div class="link">Ask the agent to fix the first one</div>
+        </div>
+      </article>
+      <article class="canvas">
+        <div class="tab"><span class="dot"></span>PR queue<span class="live">Live</span></div>
+        <div class="body">
+          <h3>PR queue</h3>
+          <div class="meta">octo/app · 2 waiting on you</div>
+          <div class="md">
+            <span class="pill mono">&lt;Markdown&gt;</span>
+            <h5>Retry on 502</h5>
+            <p><b>Checks fail</b> in <code>client.ts</code>.</p>
+            <ul>
+              <li>2 approvals, waiting on you</li>
+              <li><a>Open the diff</a></li>
+            </ul>
+          </div>
+          <div class="link">Open the next PR</div>
+        </div>
+      </article>
+      </div>
+    </section>
+
+    <p class="caption">The same <span class="pill mono">&lt;Markdown&gt;</span> renders the agent's notes in every canvas, from your shared <span class="mono">ui/</span> package</p>
+
+    <p class="repo-label">In your repo</p>
+    <section class="repo">
+      <article class="feature">
+        <h4>Typed end to end <span>· Zod in, TypeScript out</span></h4>
+<pre class="mono"><span class="file">src/App.tsx</span>
+<span class="k">const</span> [add] = useAction(<span class="s">'add_blocker'</span>)
+
+add({ text: <span class="s">'CI is red'</span> })    <span class="ok">✓</span>
+add({ <span class="squiggle">txt</span>: <span class="s">'CI is red'</span> })
+<span class="error">'txt' does not exist in type { text: string }</span></pre>
+      </article>
+      <article class="feature">
+        <h4>Tested in a real browser <span>· Playwright fixtures</span></h4>
+<pre class="mono"><span class="file">e2e/board.spec.ts</span>
+<span class="k">await</span> agent.invoke(<span class="s">'add_blocker'</span>, { text })
+<span class="k">await</span> expect(page.getByRole(<span class="s">'listitem'</span>))
+  .toHaveCount(<span class="s">1</span>)
+
+<span class="ok">✓</span> light   <span class="ok">✓</span> dark   <span class="ok">✓</span> high-contrast</pre>
+      </article>
+      <article class="feature">
+        <h4>Shared prebuilt <span>· one push, no build for your team</span></h4>
+<pre class="mono"><span class="file">terminal</span>
+<span class="c">$</span> git push                      <span class="c"># you</span>
+<span class="ok">✓</span> Built 3 canvases, published to stable
+
+<span class="c">$</span> copilot plugin marketplace add acme/kit#stable
+<span class="c">$</span> copilot plugin install release-board@acme
+<span class="ok">✓</span> Plugin "release-board" installed</pre>
+      </article>
+    </section>
+  </body>
+</html>

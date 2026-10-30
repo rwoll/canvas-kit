@@ -1,0 +1,56 @@
+packages:
+  - ui
+  - packages/*
+  - canvases/*
+
+# Supply-chain hardening. pnpm 11 reads only registry and auth settings from
+# .npmrc, so these live here.
+
+# Install only versions published at least 7 days ago, including transitive
+# dependencies. Fail instead of skipping the check when the registry cannot
+# date a version.
+minimumReleaseAge: 10080
+minimumReleaseAgeIgnoreMissingTime: false
+
+# Never run dependency lifecycle scripts (preinstall, install, postinstall),
+# and fail the install if a dependency needs one.
+ignoreScripts: true
+strictDepBuilds: true
+
+# The package feed serves tarballs from rotating hosts, so pnpm's check of
+# lockfile tarball URLs against fresh registry metadata fails spuriously
+# (ERR_PNPM_TARBALL_URL_MISMATCH). Integrity hashes are still verified.
+trustLockfile: true
+
+# The Copilot host supplies the SDK at runtime; it is needed here for types
+# only, so skip its large per-platform binaries.
+ignoredOptionalDependencies:
+  - '@github/copilot-sdk-darwin-arm64'
+  - '@github/copilot-sdk-darwin-x64'
+  - '@github/copilot-sdk-linux-arm64'
+  - '@github/copilot-sdk-linux-x64'
+  - '@github/copilot-sdk-linuxmusl-arm64'
+  - '@github/copilot-sdk-linuxmusl-x64'
+  - '@github/copilot-sdk-win32-arm64'
+  - '@github/copilot-sdk-win32-x64'
+
+# @github/copilot-sdk pins zod 4.3.6, which has a memory exhaustion advisory
+# (fixed in 4.6.6). The SDK is only used for types here; the Copilot host
+# supplies its own at run time.
+overrides:
+  '@github/copilot-sdk>zod': 4.6.7
+
+catalog:
+  '@github/copilot-sdk': ^1.0.25
+  '@playwright/test': ^1.60.0
+  '@types/node': ^24.13.3
+  '@types/react': ^19.2.18
+  '@types/react-dom': ^19.2.7
+  '@vitejs/plugin-react': ^6.1.1
+  oxlint: ^1.81.0
+  react: ^19.2.8
+  react-dom: ^19.2.8
+  typescript: ~6.0.2
+  vite: ^8.3.0
+  vitest: ^5.0.5
+  zod: ^4.6.7

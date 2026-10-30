@@ -1,0 +1,118 @@
+{
+  "name": "@rwoll/canvas-kit",
+  "version": "0.1.0",
+  "description": "Build Copilot canvas extensions with TypeScript and React: typed state and actions, a secure local host, a Vite build, test helpers, and marketplace publishing.",
+  "keywords": [
+    "copilot",
+    "github-copilot",
+    "canvas",
+    "copilot-extension",
+    "react",
+    "vite"
+  ],
+  "license": "MIT",
+  "author": "Ross A. Wollman",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rwoll/canvas-kit.git",
+    "directory": "packages/canvas-kit"
+  },
+  "homepage": "https://github.com/rwoll/canvas-kit/tree/main/packages/canvas-kit#readme",
+  "bugs": "https://github.com/rwoll/canvas-kit/issues",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "bin": {
+    "canvas-kit": "./cli/canvas-kit.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "default": "./dist/react.js"
+    },
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "default": "./dist/server/index.js"
+    },
+    "./extension": {
+      "types": "./dist/extension.d.ts",
+      "default": "./dist/extension.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    },
+    "./playwright": {
+      "types": "./dist/playwright.d.ts",
+      "default": "./dist/playwright.js"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "default": "./dist/vite.js"
+    },
+    "./cli": "./cli/lib.mjs",
+    "./styles.css": "./styles.css",
+    "./tsconfig/*": "./tsconfig/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "cli",
+    "!cli/*.test.mjs",
+    "templates",
+    "styles.css",
+    "tsconfig",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "catalog:",
+    "zod": "catalog:"
+  },
+  "peerDependencies": {
+    "@github/copilot-sdk": "^1.0.25",
+    "@playwright/test": "^1.60.0",
+    "react": "^19.0.0",
+    "vite": "^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@github/copilot-sdk": {
+      "optional": true
+    },
+    "@playwright/test": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@github/copilot-sdk": "catalog:",
+    "@playwright/test": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "react": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "provenance": true
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "__NAME__",
+  "private": true,
+  "version": "0.1.0",
+  "description": "__DESCRIPTION__",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "e2e": "playwright test",
+    "playwright:install": "playwright install chromium"
+  },
+  "dependencies": {
+    "@rwoll/canvas-kit": "",
+    "react": "",
+    "react-dom": ""
+  },
+  "devDependencies": {
+    "@playwright/test": "",
+    "@types/node": "",
+    "@types/react": "",
+    "@types/react-dom": "",
+    "typescript": "",
+    "vite": "",
+    "vitest": ""
+  }
+}

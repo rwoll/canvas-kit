@@ -1,0 +1,30 @@
+{
+  "name": "release-board",
+  "private": true,
+  "version": "0.4.0",
+  "description": "Track release blockers for a repository with the agent.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "e2e": "playwright test",
+    "playwright:install": "playwright install chromium"
+  },
+  "dependencies": {
+    "@examples/ui": "workspace:*",
+    "@rwoll/canvas-kit": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@playwright/test": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

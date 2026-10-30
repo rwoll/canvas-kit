@@ -1,0 +1,6 @@
+# Every change needs a maintainer's review. The release workflows, scripts,
+# CLI, templates, skills, and dependency settings decide what users install.
+* @rwoll
+
+# Which commit every action runs at; a changed commit is a dependency update.
+/.github/workflows/actions.lock @rwoll

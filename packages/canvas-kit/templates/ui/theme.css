@@ -1,0 +1,143 @@
+/*
+ * The theme every canvas in this marketplace shares. Each canvas imports it after
+ * @rwoll/canvas-kit/styles.css, so change your brand here once.
+ */
+:root {
+  --accent: #8a2be2;
+  --accent-contrast: #fff;
+  --accent-bg: rgba(138, 43, 226, 0.1);
+  --accent-border: rgba(138, 43, 226, 0.5);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent: #c084fc;
+    --accent-contrast: #16171d;
+    --accent-bg: rgba(192, 132, 252, 0.15);
+    --accent-border: rgba(192, 132, 252, 0.5);
+  }
+}
+
+.ui-header h1 {
+  margin: 0;
+}
+
+.ui-header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.ui-checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ui-checklist li {
+  border-bottom: 1px solid var(--border);
+}
+
+.ui-checklist label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.ui-checklist input {
+  accent-color: var(--accent);
+}
+
+.ui-checklist .done .text {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.ui-checklist .note {
+  margin-left: auto;
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
+.ui-empty {
+  color: var(--muted);
+}
+
+.ui-text-button {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.ui-text-button:disabled {
+  color: var(--muted);
+}
+
+.ui-markdown > :first-child {
+  margin-top: 0;
+}
+
+.ui-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.ui-markdown :is(h2, h3, h4, h5, h6) {
+  margin: 1em 0 0.35em;
+  font-size: 1em;
+  color: var(--text-h);
+}
+
+.ui-markdown h2 {
+  font-size: 1.15em;
+}
+
+.ui-markdown :is(p, ul, ol, blockquote, pre) {
+  margin: 0.5em 0;
+}
+
+.ui-markdown :is(ul, ol) {
+  padding-left: 1.4em;
+}
+
+.ui-markdown li.task {
+  display: flex;
+  gap: 0.5em;
+  align-items: baseline;
+  margin-left: -1.4em;
+  list-style: none;
+}
+
+.ui-markdown li.task input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.ui-markdown pre {
+  padding: 0.75em 1em;
+  overflow-x: auto;
+  background: var(--code-bg);
+}
+
+.ui-markdown pre code {
+  padding: 0;
+  background: none;
+}
+
+.ui-markdown blockquote {
+  padding-left: 0.9em;
+  border-left: 2px solid var(--accent-border);
+  color: var(--muted);
+}
+
+.ui-markdown a {
+  color: var(--accent);
+}
+
+.ui-markdown hr {
+  margin: 1em 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}

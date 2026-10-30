@@ -1,0 +1,22 @@
+# This repository is itself a canvas-kit marketplace. Publish it to the stable
+# branch with the reusable workflow, exactly as a marketplace repository would:
+#   copilot plugin marketplace add rwoll/canvas-kit#stable
+name: Publish marketplace
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  publish:
+    # The build job drops this to read-only; only the push job writes.
+    permissions:
+      contents: write
+    uses: ./.github/workflows/marketplace.yml
+    with:
+      playwright: true
+      # Required reviewers and the main-only rule live on the environment; see RELEASING.md.
+      environment: stable

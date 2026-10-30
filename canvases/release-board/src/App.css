@@ -1,0 +1,26 @@
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 40rem;
+  margin: 0 auto;
+}
+
+p {
+  margin: 0;
+}
+
+.connection {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+form input {
+  flex: 1;
+}

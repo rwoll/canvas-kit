@@ -1,0 +1,46 @@
+{
+  "name": "@rwoll/create-canvas",
+  "version": "0.1.0",
+  "description": "Create a Copilot plugin marketplace with a TypeScript and React canvas: npm create @rwoll/canvas",
+  "keywords": [
+    "copilot",
+    "github-copilot",
+    "canvas",
+    "create"
+  ],
+  "license": "MIT",
+  "author": "Ross A. Wollman",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rwoll/canvas-kit.git",
+    "directory": "packages/create-canvas"
+  },
+  "homepage": "https://github.com/rwoll/canvas-kit/tree/main/packages/create-canvas#readme",
+  "bugs": "https://github.com/rwoll/canvas-kit/issues",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "bin": {
+    "create-canvas": "./index.mjs"
+  },
+  "files": [
+    "index.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@rwoll/canvas-kit": "workspace:^"
+  },
+  "devDependencies": {
+    "vitest": "catalog:"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "provenance": true
+  }
+}

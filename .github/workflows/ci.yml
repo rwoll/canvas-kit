@@ -1,0 +1,83 @@
+# Checks pushes and pull requests, including from forks, with a read-only token,
+# no secrets, and no OIDC. Its dependency cache is never restored by the
+# publishing workflows.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+
+      # Installs the pnpm version pinned by package.json "packageManager".
+      - uses: pnpm/action-setup@v6.1.0
+        with:
+          cache: true
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build, typecheck, lint, and unit tests
+        run: pnpm check
+
+      - name: Browser tests
+        run: |
+          pnpm -r --workspace-concurrency=1 --if-present run playwright:install --with-deps
+          pnpm e2e
+
+      # Pack the packages as npm would publish them and use them from a new marketplace.
+      - name: Consumer test
+        run: pnpm consumer-test
+
+      - uses: actions/upload-artifact@v7.0.2
+        if: failure()
+        with:
+          name: playwright-results
+          path: canvases/*/test-results
+          if-no-files-found: ignore
+
+  # Every action the workflows use is locked to a reviewed commit in
+  # .github/workflows/actions.lock, which the runner enforces. This fails when the
+  # lockfile is out of date or a locked commit no longer verifies upstream.
+  # After changing any `uses:`, run `gh actions-lock` and commit the result.
+  actions-lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      # An immutable, attested release; update it here and in packages/canvas-kit/cli/lib.mjs.
+      GH_ACTIONS_LOCK: v0.4.0
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install gh-actions-lock and check its build provenance
+        run: |
+          gh extension install github/gh-actions-lock --pin "$GH_ACTIONS_LOCK"
+          gh attestation verify "${XDG_DATA_HOME:-$HOME/.local/share}/gh/extensions/gh-actions-lock/gh-actions-lock" \
+            --repo github/gh-actions-lock \
+            --signer-workflow github/gh-actions-lock/.github/workflows/release.yml \
+            --source-ref "refs/tags/$GH_ACTIONS_LOCK"
+
+      - run: gh actions-lock --verify

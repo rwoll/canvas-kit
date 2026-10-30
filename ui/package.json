@@ -1,0 +1,24 @@
+{
+  "name": "@examples/ui",
+  "private": true,
+  "version": "0.1.0",
+  "description": "React components and the theme shared by every canvas in this marketplace.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./theme.css": "./theme.css"
+  },
+  "scripts": {
+    "typecheck": "tsc -p ."
+  },
+  "peerDependencies": {
+    "@rwoll/canvas-kit": "*",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@rwoll/canvas-kit": "workspace:*",
+    "@types/react": "catalog:",
+    "react": "catalog:",
+    "typescript": "catalog:"
+  }
+}

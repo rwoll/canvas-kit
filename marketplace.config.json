@@ -1,0 +1,11 @@
+{
+  "name": "canvas-kit",
+  "owner": {
+    "name": "rwoll"
+  },
+  "repository": "rwoll/canvas-kit",
+  "publishBranch": "stable",
+  "sourceBranch": "main",
+  "checkCommand": "pnpm check && pnpm e2e",
+  "ui": "@examples/ui"
+}

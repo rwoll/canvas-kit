@@ -1,0 +1,26 @@
+{
+  "name": "canvas-kit-workspace",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "new-canvas": "canvas-kit new --catalog --kit workspace:*",
+    "build": "pnpm -r build && canvas-kit build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "oxlint",
+    "test": "pnpm -r test",
+    "e2e": "pnpm -r e2e",
+    "check": "pnpm build && pnpm typecheck && pnpm lint && pnpm test",
+    "consumer-test": "node scripts/consumer-test.mjs",
+    "release": "canvas-kit release",
+    "hero": "node docs/hero/render.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "catalog:",
+    "@rwoll/canvas-kit": "workspace:*",
+    "oxlint": "catalog:"
+  }
+}
