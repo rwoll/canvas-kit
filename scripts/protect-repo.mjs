@@ -31,6 +31,17 @@ function change(description, args, body) {
   if (!dryRun) gh(args, body);
 }
 
+/** Like change(), but skipped when `isSet()` says the setting is already in place. */
+function ensure(description, isSet, args, body) {
+  if (isSet()) console.log(`Already set: ${description}`);
+  else change(description, args, body);
+}
+
+/** True when a GET succeeds: for endpoints that answer 204 when on and 404 when off. */
+function exists(path) {
+  return spawnSync('gh', ['api', '--silent', path], { encoding: 'utf8' }).status === 0;
+}
+
 const { visibility, owner } = gh([`repos/${repo}`]);
 const isPublic = visibility === 'public';
 const me = gh([`users/${owner.login}`]);
@@ -148,16 +159,35 @@ change('list the allowed actions', ['--method', 'PUT', `repos/${repo}/actions/pe
 
 // ---------- public-only settings ----------
 
+// GitHub rejects turning some of these on when they already are (Dependabot alerts
+// answer 422), so each is checked first. New public repositories often start with
+// Dependabot alerts on.
 if (isPublic) {
-  change('turn on Dependabot alerts', ['--method', 'PUT', `repos/${repo}/vulnerability-alerts`]);
-  change('turn on Dependabot security updates', ['--method', 'PUT', `repos/${repo}/automated-security-fixes`]);
-  change('require approval before workflows run for every outside contributor', ['--method', 'PUT', `repos/${repo}/actions/permissions/fork-pr-contributor-approval`], {
-    approval_policy: 'all_external_contributors',
-  });
-  change('turn on private vulnerability reporting', ['--method', 'PUT', `repos/${repo}/private-vulnerability-reporting`]);
-  change('turn on secret scanning and push protection', ['--method', 'PATCH', `repos/${repo}`], {
-    security_and_analysis: { secret_scanning: { status: 'enabled' }, secret_scanning_push_protection: { status: 'enabled' } },
-  });
+  const security = gh([`repos/${repo}`]).security_and_analysis ?? {};
+  const on = name => security[name]?.status === 'enabled';
+  ensure('turn on Dependabot alerts', () => exists(`repos/${repo}/vulnerability-alerts`), ['--method', 'PUT', `repos/${repo}/vulnerability-alerts`]);
+  ensure(
+    'turn on Dependabot security updates',
+    () => gh([`repos/${repo}/automated-security-fixes`]).enabled,
+    ['--method', 'PUT', `repos/${repo}/automated-security-fixes`],
+  );
+  ensure(
+    'require approval before workflows run for every outside contributor',
+    () => gh([`repos/${repo}/actions/permissions/fork-pr-contributor-approval`]).approval_policy === 'all_external_contributors',
+    ['--method', 'PUT', `repos/${repo}/actions/permissions/fork-pr-contributor-approval`],
+    { approval_policy: 'all_external_contributors' },
+  );
+  ensure(
+    'turn on private vulnerability reporting',
+    () => gh([`repos/${repo}/private-vulnerability-reporting`]).enabled,
+    ['--method', 'PUT', `repos/${repo}/private-vulnerability-reporting`],
+  );
+  ensure(
+    'turn on secret scanning and push protection',
+    () => on('secret_scanning') && on('secret_scanning_push_protection'),
+    ['--method', 'PATCH', `repos/${repo}`],
+    { security_and_analysis: { secret_scanning: { status: 'enabled' }, secret_scanning_push_protection: { status: 'enabled' } } },
+  );
 } else {
   console.log(
     'Dependabot alerts (without the dependency graph), fork pull request approval, private vulnerability reporting, and free secret scanning need a public repository; rerun after making it public.',
