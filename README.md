@@ -2,10 +2,9 @@
 
 # canvas-kit
 
-**Copilot canvases you can change, test, and share.** Describe a canvas once in
-TypeScript: its state, and the actions that both the agent and the user call.
-canvas-kit turns it into a live React panel in Copilot, and takes care of saved
-state, scheduled jobs, tests, and publishing.
+**Copilot canvases you can change, test, and share.** Build the release boards,
+triage queues, and review tools that you and your agent work in together: state
+and actions in TypeScript, UI in React, and canvas-kit handles the rest.
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)
@@ -20,23 +19,21 @@ state, scheduled jobs, tests, and publishing.
 
 ## What you get
 
-- **One definition, typed end to end.** The agent gets your actions as tools, every
-  call is validated, and the UI gets typed React hooks, all from one Zod schema.
-- **Live, two-way canvases.** The agent and the user change the same state, and
-  every open view updates at once. A button can also message the agent.
-- **Saved documents, shared across chats.** Key a canvas by a repository or a file:
-  every chat that opens it works on the same document, and it outlives the chat.
-- **Scheduled jobs.** Keep documents up to date on an interval. Users and the agent
-  can pause, retime, or add jobs, and they run from cron with no chat open.
-- **Shared components and one theme.** A `ui/` package with Header, Checklist,
-  Markdown, and your own components keeps every canvas consistent.
-- **A dev server and real tests.** Preview a canvas in your browser with live
-  actions, then test it with Playwright as both the agent and the user.
-- **One-push publishing.** `git push` builds your canvases, plus any skills, agents,
-  or MCP servers, into a plugin marketplace your team installs in two commands.
+- **React components.** Typed hooks wire your components to live state; share them
+  across canvases to stay on brand.
+- **Live, two-way canvases.** The agent's changes appear instantly, it reads yours,
+  and a button can hand it the next task.
+- **Saved, shared documents.** One board per repository: every chat on the release
+  updates it, and tomorrow's chat picks up where today's left off.
+- **Scheduled jobs.** Refresh pull request checks every 15 minutes or prune last
+  week's triaged tests, even with no chat open. Users can pause or retime them.
+- **A fast dev loop.** Preview changes live in your browser with no reinstalling,
+  then test as the agent and the user with Playwright.
+- **Share with one push.** `git push` publishes your canvases, skills, agents, and
+  MCP servers for your users to install in two commands.
 
-An agent can write a one-off canvas in plain HTML. canvas-kit is for the ones you
-keep changing and share.
+For a one-off view, plain HTML is fine. canvas-kit is for canvases you keep and
+share.
 
 ## Try it
 
