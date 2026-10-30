@@ -20,7 +20,7 @@ reusable [marketplace.yml](.github/workflows/marketplace.yml):
    `pnpm check && pnpm e2e` in a clean worktree, and prepares the next `stable`
    commit as a git bundle, only when the output changed. The run summary shows
    what changes.
-2. **push** waits for the `stable` environment, then checks the bundle without
+2. **push** runs in the `stable` environment, then checks the bundle without
    running anything from it and fast-forwards `stable`:
    - the run is for `main`, and its commit is on `main`;
    - the bundle holds exactly one new commit on top of the current `stable`;
@@ -52,13 +52,17 @@ so a later change here never runs in their workflows until they update the pin.
 ## How releases are protected
 
 [`scripts/protect-repo.mjs`](scripts/protect-repo.mjs) applies the repository
-settings. It is safe to rerun.
+settings. It is safe to rerun, and it tunes reviews to the number of maintainers
+(people with write access): with one, pull requests need passing checks but no
+approval, since GitHub doesn't let authors approve their own, and only npm
+releases wait for approval. Rerun it after adding a maintainer to require a code
+owner's review on pull requests and approval for `stable` too.
 
 | Setting | What it does |
 | --- | --- |
-| `npm` environment | Only `v*` tags deploy. Required reviewer once the repository is public. |
-| `stable` environment | Only `main` deploys. Required reviewer once the repository is public. |
-| Ruleset "Default branch" | Pull requests with an approving code owner review and a passing `check`; no force pushes or deletion. Admins may bypass; workflow tokens may not. |
+| `npm` environment | Only `v*` tags deploy, and a maintainer approves each release. |
+| `stable` environment | Only `main` deploys. With more than one maintainer, a maintainer approves each publish; with one, merging to `main` is the approval. |
+| Ruleset "Default branch" | Pull requests that pass `check` and `actions-lock`, plus a code owner's approval with more than one maintainer; no force pushes or deletion. Admins may bypass; workflow tokens may not. |
 | Ruleset "Published branch" | `stable` is never force-pushed or deleted. Fast-forward pushes are not limited to the publish job yet; see [Going public](#going-public). |
 | Ruleset "Release tags" | Only admins create, move, or delete `v*` tags. |
 | Actions | Default token is read-only; only GitHub's actions and `pnpm/action-setup`, pinned to full commit SHAs. |

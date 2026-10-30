@@ -47,20 +47,33 @@ const isPublic = visibility === 'public';
 const me = gh([`users/${owner.login}`]);
 console.log(`${repo} is ${visibility}.`);
 
+// Reviews are tuned to who can merge: GitHub doesn't let authors approve their own
+// pull requests, so with one maintainer, required approvals only add bypasses.
+// Rerun after adding or removing a maintainer.
+const maintainers = gh([`repos/${repo}/collaborators?affiliation=all&per_page=100`]).filter(user => user.type === 'User' && user.permissions?.push);
+const solo = maintainers.length <= 1;
+console.log(
+  solo
+    ? `@${me.login} is the only maintainer: pull requests need passing checks but no approval, and only npm releases wait for approval.`
+    : `${maintainers.length} maintainers: pull requests also need a code owner's approval, and stable and npm deployments wait for approval.`,
+);
+
 // ---------- environments ----------
 
 const environments = [
-  // npm trusted publishing is bound to this environment on npmjs.com.
-  { name: 'npm', refs: [{ name: 'v*', type: 'tag' }] },
-  { name: 'stable', refs: [{ name: config.sourceBranch ?? 'main', type: 'branch' }] },
+  // npm trusted publishing is bound to this environment on npmjs.com. Releases are
+  // rare and deliberate, so they always wait for approval.
+  { name: 'npm', refs: [{ name: 'v*', type: 'tag' }], approve: true },
+  // With one maintainer, merging to main is the approval.
+  { name: 'stable', refs: [{ name: config.sourceBranch ?? 'main', type: 'branch' }], approve: !solo },
 ];
-for (const { name, refs } of environments) {
+for (const { name, refs, approve } of environments) {
   change(
-    `configure environment ${name}: deploy only from ${refs.map(ref => `${ref.type} ${ref.name}`).join(', ')}${isPublic ? `, approved by @${me.login}` : ''}`,
+    `configure environment ${name}: deploy only from ${refs.map(ref => `${ref.type} ${ref.name}`).join(', ')}${isPublic ? (approve ? `, approved by @${me.login}` : ', no approval') : ''}`,
     ['--method', 'PUT', `repos/${repo}/environments/${name}`],
     {
       deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
-      ...(isPublic && { reviewers: [{ type: 'User', id: me.id }], prevent_self_review: false, can_admins_bypass: false }),
+      ...(isPublic && { reviewers: approve ? [{ type: 'User', id: me.id }] : [], prevent_self_review: false, can_admins_bypass: false }),
     },
   );
   const existing = dryRun ? [] : gh([`repos/${repo}/environments/${name}/deployment-branch-policies`]).branch_policies;
@@ -103,18 +116,20 @@ const rulesets = [
     target: 'branch',
     enforcement: 'active',
     conditions: { ref_name: { include: ['~DEFAULT_BRANCH'], exclude: [] } },
-    // Changes land through reviewed pull requests that pass CI. Admins may bypass;
-    // workflow tokens may not, so no workflow can push to main.
+    // Changes land through pull requests that pass CI and, with more than one
+    // maintainer, a code owner's review. Admins may bypass; workflow tokens may not,
+    // so no workflow can push to main.
     rules: [
       { type: 'deletion' },
       { type: 'non_fast_forward' },
       {
         type: 'pull_request',
         parameters: {
-          required_approving_review_count: 1,
-          dismiss_stale_reviews_on_push: true,
-          require_code_owner_review: true,
-          require_last_push_approval: true,
+          required_approving_review_count: solo ? 0 : 1,
+          dismiss_stale_reviews_on_push: !solo,
+          require_code_owner_review: !solo,
+          require_last_push_approval: !solo,
+          require_extra_approval_for_unattributed_changes: !solo,
           required_review_thread_resolution: false,
         },
       },
