@@ -88,17 +88,21 @@ export default defineCanvas({
   input: z.object({ repo: z.string() }),
   state: z.object({ repo: z.string(), blockers: z.array(z.string()) }),
   init: ({ input }) => ({ repo: input.repo, blockers: [] }),
-  persist: { key: ({ input }) => input.repo },         // one saved board per repository
+  persist: { key: ({ input }) => input.repo },   // one saved board per repository
   actions: ({ action }) => ({
-    add_blocker: action({                                // a tool for the agent, a call for the UI
+    // The agent calls it as a tool; the UI calls it as a typed function.
+    add_blocker: action({
       description: 'Add a release blocker.',
       input: z.object({ text: z.string().min(1) }),
-      run: (ctx, { text }) => ctx.setState((s) => ({ ...s, blockers: [...s.blockers, text] })),
+      run: (ctx, { text }) =>
+        ctx.setState((s) => ({ ...s, blockers: [...s.blockers, text] })),
     }),
-    ask_agent: action({                                  // a button that messages the agent
+    // A button in the canvas that messages the agent.
+    ask_agent: action({
       description: 'Ask the agent to investigate the blockers.',
       expose: 'ui',
-      run: (ctx) => ctx.sendToAgent({ prompt: `Investigate these blockers: ${ctx.state.blockers.join('; ')}` }),
+      run: (ctx) =>
+        ctx.sendToAgent({ prompt: `Investigate the blockers in ${ctx.state.repo}` }),
     }),
   }),
 })
@@ -113,7 +117,7 @@ import type canvas from '../server/canvas.ts'
 const { useCanvas, useAction } = createCanvasHooks<typeof canvas>()
 
 export default function App() {
-  const { state } = useCanvas()                          // updates live when the agent acts
+  const { state } = useCanvas()                  // updates live when the agent acts
   const [addBlocker] = useAction('add_blocker')
   const [askAgent] = useAction('ask_agent')
   return (
@@ -140,11 +144,11 @@ const test = canvasTest(canvas)
 
 test('the user and the agent share the board', async ({ openCanvas, agent }) => {
   const { page } = await openCanvas({ repo: 'octo/app' })
-  await page.getByRole('button', { name: 'Add' }).click()           // as the user
-  await agent.invoke('add_blocker', { text: 'Docs missing' })       // as the agent
+  await page.getByRole('button', { name: 'Add' }).click()        // as the user
+  await agent.invoke('add_blocker', { text: 'Docs missing' })    // as the agent
   await expect(page.getByRole('listitem')).toHaveCount(2)
   await page.getByRole('button', { name: 'Ask the agent' }).click()
-  await expect.poll(() => agent.messages.length).toBe(1)            // what the canvas sent the agent
+  await expect.poll(() => agent.messages.length).toBe(1)         // it messaged the agent
 })
 ```
 
