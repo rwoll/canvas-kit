@@ -1,6 +1,6 @@
 {
   "name": "@rwoll/create-canvas",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Create a Copilot plugin marketplace with a TypeScript and React canvas: npm create @rwoll/canvas",
   "keywords": [
     "copilot",
