@@ -1,9 +1,29 @@
 # @rwoll/canvas-kit
 
-Build Copilot canvas extensions with TypeScript and React. A canvas is an
-interactive panel that the agent opens with `open_canvas` and drives with
-`invoke_canvas_action`. A canvas package declares its state and actions once, and
-the kit supplies everything else.
+**Copilot canvases you can change, test, and share.** Build the release boards,
+triage queues, and review tools that you and your agent work in together: state
+and actions in TypeScript, UI in React, and canvas-kit handles the rest.
+
+- **React components.** Typed hooks wire your components to live state; share them
+  across canvases to stay on brand.
+- **Live, two-way canvases.** The agent's changes appear instantly, it reads yours,
+  and a button can hand it the next task.
+- **Saved, shared documents.** One board per repository: every chat on the release
+  updates it, and tomorrow's chat picks up where today's left off.
+- **Scheduled jobs.** Refresh pull request checks every 15 minutes or prune last
+  week's triaged tests, even with no chat open. Users can pause or retime them.
+- **A fast dev loop.** Preview changes live in your browser with no reinstalling,
+  then test as the agent and the user with Playwright.
+- **Share with one push.** `git push` publishes your canvases, skills, agents, and
+  MCP servers for your users to install in two commands.
+
+For a one-off view, plain HTML is fine. canvas-kit is for canvases you keep and
+share. See the [project README](https://github.com/rwoll/canvas-kit#readme) for
+screenshots and example canvases.
+
+A canvas is an interactive panel that the agent opens with `open_canvas` and
+drives with `invoke_canvas_action`. A canvas package declares its state and
+actions once, and the kit supplies everything else. This guide covers the API.
 
 ## Quickstart
 
