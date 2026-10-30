@@ -26,7 +26,7 @@ scripts/                       consumer test, npm publishing, repository protect
 ```
 
 Changes reach `main` through pull requests that pass [CI](.github/workflows/ci.yml)
-and a code owner review. [Publish marketplace](.github/workflows/publish.yml) then
+(and a code owner's review, once there is more than one maintainer). [Publish marketplace](.github/workflows/publish.yml) then
 runs the reusable workflow, whose check is `pnpm check && pnpm e2e`. See
 [RELEASING.md](RELEASING.md) for how `stable` and npm releases are protected.
 
