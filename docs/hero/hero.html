@@ -19,7 +19,6 @@
         --accent-line: #c9a3f5;
         --code: #f6f3fb;
         --ok: #1a7f37;
-        --err: #cf222e;
         --shadow: 0 1px 2px rgba(23, 21, 28, 0.05), 0 10px 28px rgba(60, 30, 110, 0.09);
         --kw: #8a2be2;
         --str: #0a6e5c;
@@ -38,7 +37,6 @@
         --accent-line: #6d42a3;
         --code: #1c1c26;
         --ok: #3fb950;
-        --err: #ff7b72;
         --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 28px rgba(0, 0, 0, 0.45);
         --kw: #d2a8ff;
         --str: #7ee2b8;
@@ -432,19 +430,12 @@
       .ok {
         color: var(--ok);
       }
-      .squiggle {
-        text-decoration: underline wavy var(--err);
-        text-underline-offset: 3px;
-      }
-      .error {
-        color: var(--err);
-      }
     </style>
   </head>
   <body>
     <div class="brand"><img src="../logo.png" alt="" />canvas-kit</div>
     <h1>Copilot canvases you can <em>change, test, and share</em>.</h1>
-    <p class="sub">Your agent writes two typed files. canvas-kit adds live state, saved documents, scheduled jobs, shared UI, tests, and publishing.</p>
+    <p class="sub">React panels that you and your agent work in together, with live state, saved documents, scheduled jobs, tests, and publishing.</p>
 
     <section class="window" aria-label="A Copilot window">
       <div class="titlebar"><span class="light"></span><span class="light"></span><span class="light"></span><span class="title">✦ Copilot · octo/app</span></div>
@@ -512,18 +503,18 @@
       </div>
     </section>
 
-    <p class="caption">The same <span class="pill mono">&lt;Markdown&gt;</span> renders the agent's notes in every canvas, from your shared <span class="mono">ui/</span> package</p>
+    <p class="caption">The same React <span class="pill mono">&lt;Markdown&gt;</span> component renders the agent's notes in every canvas, from your shared <span class="mono">ui/</span> package</p>
 
     <p class="repo-label">In your repo</p>
     <section class="repo">
       <article class="feature">
-        <h4>Typed end to end <span>· Zod in, TypeScript out</span></h4>
+        <h4>React components <span>· typed hooks, shared UI</span></h4>
 <pre class="mono"><span class="file">src/App.tsx</span>
-<span class="k">const</span> [add] = useAction(<span class="s">'add_blocker'</span>)
+<span class="k">import</span> { Checklist, Markdown } <span class="k">from</span> <span class="s">'@acme/ui'</span>
+<span class="k">const</span> { state } = useCanvas()   <span class="c">// live, typed</span>
 
-add({ text: <span class="s">'CI is red'</span> })    <span class="ok">✓</span>
-add({ <span class="squiggle">txt</span>: <span class="s">'CI is red'</span> })
-<span class="error">'txt' does not exist in type { text: string }</span></pre>
+&lt;<span class="k">Markdown</span>&gt;{state.notes}&lt;/<span class="k">Markdown</span>&gt;
+&lt;<span class="k">Checklist</span> label=<span class="s">"Blockers"</span> items={items} /&gt;</pre>
       </article>
       <article class="feature">
         <h4>Tested in a real browser <span>· Playwright fixtures</span></h4>
