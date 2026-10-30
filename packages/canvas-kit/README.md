@@ -251,15 +251,19 @@ so it is safe while chats have the canvas open.
 
 ```sh
 # In a canvas package after `pnpm build`, or with --plugin for an installed plugin
-npx canvas-kit run
-npx canvas-kit run prune_triaged --plugin ~/.copilot/installed-plugins/my-marketplace/flaky-tests
+npx @rwoll/canvas-kit run
+npx @rwoll/canvas-kit run prune_triaged --plugin ~/.copilot/installed-plugins/my-marketplace/flaky-tests
 ```
+
+In a canvas package, `npx` runs the `@rwoll/canvas-kit` it installed; elsewhere it
+downloads it. Always give the scoped name: the unscoped `canvas-kit` on npm is a
+different package.
 
 Run it at least as often as the shortest interval users may pick. For example,
 every 15 minutes with cron (`crontab -e`):
 
 ```text
-*/15 * * * * cd ~/canvases/flaky-tests && npx canvas-kit run >> /tmp/flaky-tests-jobs.log 2>&1
+*/15 * * * * cd ~/canvases/flaky-tests && npx @rwoll/canvas-kit run >> /tmp/flaky-tests-jobs.log 2>&1
 ```
 
 Or with a launchd agent on macOS, in `~/Library/LaunchAgents/com.example.flaky-tests-jobs.plist`, loaded
@@ -273,7 +277,7 @@ with `launchctl load ~/Library/LaunchAgents/com.example.flaky-tests-jobs.plist`:
   <key>Label</key><string>com.example.flaky-tests-jobs</string>
   <key>WorkingDirectory</key><string>/Users/me/canvases/flaky-tests</string>
   <key>ProgramArguments</key>
-  <array><string>/opt/homebrew/bin/npx</string><string>canvas-kit</string><string>run</string></array>
+  <array><string>/opt/homebrew/bin/npx</string><string>@rwoll/canvas-kit</string><string>run</string></array>
   <key>StartInterval</key><integer>900</integer>
 </dict>
 </plist>
