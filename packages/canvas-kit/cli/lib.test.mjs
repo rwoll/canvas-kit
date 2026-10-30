@@ -103,6 +103,39 @@ describe('canvas-kit init and build', () => {
   });
 });
 
+describe('npx commands in docs, skills, templates, CLI messages, and workflows', () => {
+  // Outside a project that installs it, npx downloads whatever package has the
+  // name it is given, and an unscoped `canvas-kit` on npm belongs to someone else.
+  const takesValue = new Set(['--registry', '--package', '-p', '--cache', '--userconfig', '--prefix']);
+
+  it('name a scoped package', async () => {
+    const root = fileURLToPath(new URL('../../../', import.meta.url));
+    const files = execFileSync(
+      'git',
+      ['ls-files', '-z', '--', '*.md', '.github', 'packages/canvas-kit/templates', 'packages/canvas-kit/cli/*.mjs', 'packages/create-canvas/*.mjs', ':!*.test.mjs'],
+      { cwd: root, encoding: 'utf8' },
+    )
+      .split('\0')
+      .filter(Boolean);
+    expect(files).toContain('packages/canvas-kit/README.md');
+    const unscoped = [];
+    for (const file of files) {
+      // launchd lists each argument as its own <string>.
+      const text = (await readFile(join(root, file), 'utf8')).replaceAll('</string><string>', ' ');
+      for (const match of text.matchAll(/\bnpx((?:[ \t]+\S+)+)/g)) {
+        const tokens = match[1].trim().split(/[ \t]+/);
+        let spec;
+        for (let i = 0; i < tokens.length && spec === undefined; i += 1) {
+          if (!tokens[i].startsWith('-')) spec = tokens[i];
+          else if (takesValue.has(tokens[i])) i += 1;
+        }
+        if (!/^@[\w.-]+\/[\w.-]/.test(spec ?? '')) unscoped.push(`${file}: npx${match[1].split('\n')[0]}`);
+      }
+    }
+    expect(unscoped).toEqual([]);
+  });
+});
+
 describe('scaffolded workflows', () => {
   it('pin the commits this repository\'s actions.lock records, and its gh-actions-lock version', async () => {
     const workflows = new URL('../../../.github/workflows/', import.meta.url);
