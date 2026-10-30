@@ -1,0 +1,26 @@
+{
+  "name": "canvas-kit",
+  "owner": {
+    "name": "rwoll"
+  },
+  "plugins": [
+    {
+      "name": "canvas-kit-skills",
+      "description": "Skills for building, testing, and publishing Copilot canvases with @rwoll/canvas-kit (TypeScript and React).",
+      "version": "0.7.0",
+      "source": "./plugins/canvas-kit-skills"
+    },
+    {
+      "name": "flaky-tests",
+      "description": "Triage flaky tests the agent finds, together with the agent.",
+      "version": "0.4.0",
+      "source": "./plugins/flaky-tests"
+    },
+    {
+      "name": "release-board",
+      "description": "Track release blockers for a repository with the agent.",
+      "version": "0.4.0",
+      "source": "./plugins/release-board"
+    }
+  ]
+}

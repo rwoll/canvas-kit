@@ -1,0 +1,6 @@
+{
+  "name": "flaky-tests",
+  "version": "0.4.0",
+  "description": "Triage flaky tests the agent finds, together with the agent.",
+  "extensions": "extensions/"
+}
