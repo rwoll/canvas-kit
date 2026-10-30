@@ -14,7 +14,7 @@ and actions in TypeScript, UI in React, and canvas-kit handles the rest.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/hero-dark.png">
-  <img alt="A Copilot window: the chat opens three canvases (Release board, Flaky tests, PR queue) that each render the agent's notes with the same shared React Markdown component. Below, in your repo: a type error caught at compile time, a Playwright test passing in light, dark, and high-contrast, and git push publishing prebuilt canvases that a teammate installs with two commands." src="docs/hero-light.png">
+  <img alt="A Copilot window: the chat opens three canvases (Release board, Flaky tests, PR queue) that each render the agent's notes with the same shared React Markdown component. Below, in your repo: a React component that imports Markdown and Checklist from a shared ui package and reads live state with a typed useCanvas hook, a Playwright test passing in light, dark, and high-contrast, and git push publishing prebuilt canvases that a teammate installs with two commands." src="docs/hero-light.png">
 </picture>
 
 ## What you get
