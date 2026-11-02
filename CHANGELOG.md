@@ -9,9 +9,12 @@ break things.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-01
+
 ### Changed
 
-- **Breaking:** a marketplace is one project instead of a package per canvas. Each
+- **Breaking:** a marketplace is one project instead of a package per canvas
+  ([#9](https://github.com/rwoll/canvas-kit/pull/9)). Each
   canvas is a folder, `canvases/<name>/`, with `canvas.ts` (state and actions),
   `App.tsx` (its React UI), and its tests. The project has one `package.json`,
   `vite.config.ts`, `tsconfig.json`, and `playwright.config.ts`. Pages and UI
@@ -70,6 +73,7 @@ First release: typed canvas state and actions with Zod, a secure local host, Rea
 hooks, saved documents shared across chats, scheduled jobs, Vitest and Playwright
 helpers, the `canvas-kit` command, and `npm create @rwoll/canvas`.
 
-[Unreleased]: https://github.com/rwoll/canvas-kit/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/rwoll/canvas-kit/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/rwoll/canvas-kit/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/rwoll/canvas-kit/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/rwoll/canvas-kit/releases/tag/v0.1.0
