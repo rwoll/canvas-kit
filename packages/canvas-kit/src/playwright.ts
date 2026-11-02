@@ -41,6 +41,11 @@ export interface CanvasAgent<C extends AnyCanvas> {
   readonly messages: AgentMessage[];
   /** Make the next `ctx.sendToAgent()` fail, to test how the canvas reports it. */
   failNextSend(error?: Error): void;
+  /**
+   * Deliver a session event, such as `assistant.turn_start` or `session.idle`, to
+   * drive `ctx.agent` and the page's `agent`. Its time defaults to the test clock.
+   */
+  sessionEvent(type: string, data?: Record<string, unknown>, at?: number): void;
 }
 
 export interface CanvasFixtures<C extends AnyCanvas> {
@@ -93,6 +98,7 @@ export function canvasTest<C extends AnyCanvas>(canvas: C, options: CanvasTestOp
           const failure = _canvasState.failures.shift();
           if (failure) throw failure;
           _canvasState.messages.push(message);
+          return `message-${_canvasState.messages.length}`;
         },
       });
       try {
@@ -129,6 +135,7 @@ export function canvasTest<C extends AnyCanvas>(canvas: C, options: CanvasTestOp
         failNextSend: (error = new Error('The agent could not be reached')) => {
           _canvasState.failures.push(error);
         },
+        sessionEvent: (type, data, at) => canvasHarness.sessionEvent(type, data, at),
       });
     },
 

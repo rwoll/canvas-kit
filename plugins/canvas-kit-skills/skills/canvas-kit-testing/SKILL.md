@@ -44,6 +44,11 @@ it('prunes resolved blockers hourly', async () => {
 })
 ```
 
+Drive `ctx.agent` with `harness.sessionEvent('assistant.turn_start')`,
+`sessionEvent('tool.execution_start', { toolName: 'edit' })`, and
+`sessionEvent('session.idle')` after opening (in Playwright, `agent.sessionEvent()`).
+The harness session's ID is `test-session` unless you pass `sessionId`.
+
 Jobs never run on their own in tests; use `runJob` and `tickJobs`. Test job
 controls by invoking the built-in actions as the UI does, for example
 `harness.invoke('a', 'add_job', { job: 'recurring_check', input: { text } }, 'ui')`,

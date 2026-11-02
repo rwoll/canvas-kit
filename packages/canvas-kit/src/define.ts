@@ -21,9 +21,31 @@ export interface AgentMessage {
   mode?: 'enqueue' | 'immediate';
 }
 
+/**
+ * What the agent in this chat is doing, from the session's events. Messages the
+ * canvas sent with `sendToAgent()` and calls to canvas tools are not the agent's
+ * own work, so they never move `lastActivityAt`.
+ */
+export interface AgentActivity {
+  /** True from the start of a turn until the session is idle, with no turn, sub-agent, or shell command running. */
+  readonly busy: boolean;
+  /**
+   * When the agent last did work of its own, in milliseconds: a message it did not
+   * get from this canvas, a tool call, a sub-agent, a question or approval request,
+   * a plan or to-do change, or an error. Undefined until there is any.
+   */
+  readonly lastActivityAt?: number;
+  /** When the session last became idle, in milliseconds. */
+  readonly idleSince?: number;
+}
+
 export interface ActionContext<S> {
   readonly canvasId: string;
   readonly instanceId: string;
+  /** The Copilot session (chat) the canvas runs in; undefined without one, as in the dev server. */
+  readonly sessionId: string | undefined;
+  /** What the agent in this chat is doing; never busy without a session. */
+  readonly agent: AgentActivity;
   readonly source: ActionSource;
   /** The latest state, including changes made earlier in this action. */
   readonly state: S;
@@ -47,11 +69,24 @@ export interface JobContext<S> {
   readonly id: string;
   /** The document's persist key, or undefined for a canvas without `persist`. */
   readonly key: string | undefined;
+  /** The open instances showing this document in this chat, for prompts that ask the agent to call an action. */
+  readonly instanceIds: readonly string[];
+  /** The Copilot session (chat) the canvas runs in; undefined without one, as under `canvas-kit run`. */
+  readonly sessionId: string | undefined;
+  /** What the agent in this chat is doing; never busy without a session. */
+  readonly agent: AgentActivity;
   /**
    * True under `canvas-kit run`, which runs the job with no chat or agent:
    * `sendToAgent` fails with `agent_unavailable`, so skip agent work.
    */
   readonly headless: boolean;
+  /**
+   * True when someone asked for this run (Run now, `run_job`, `runJob()`, or
+   * `canvas-kit run --force`) rather than its schedule.
+   */
+  readonly manual: boolean;
+  /** The interval it runs at for this document, in milliseconds, as chosen by users when it has `controls`. */
+  readonly every: number;
   /** When this job last ran for this document, in ISO format, or undefined before its first run. */
   readonly lastRunAt: string | undefined;
   readonly state: S;
@@ -125,6 +160,11 @@ export interface ActionHelpers<S> {
 export interface OpenContext<I> {
   readonly instanceId: string;
   readonly input: I;
+  /**
+   * The Copilot session (chat) that opened the canvas; undefined without one, as in
+   * the dev server. Return it from `persist.key` to keep one document per chat.
+   */
+  readonly sessionId: string | undefined;
 }
 
 export interface ReopenContext<S, I> extends OpenContext<I> {

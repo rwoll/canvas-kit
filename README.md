@@ -41,6 +41,7 @@ share.
 copilot plugin marketplace add rwoll/canvas-kit#stable
 copilot plugin install release-board@canvas-kit
 copilot plugin install flaky-tests@canvas-kit
+copilot plugin install session-summary@canvas-kit
 ```
 
 Reload extensions, start a new chat, and ask:
@@ -63,6 +64,19 @@ Reload extensions, start a new chat, and ask:
     </td>
   </tr>
 </table>
+
+For a long chat, ask:
+
+> Open the session summary.
+
+The agent writes an executive summary of the chat's work, and the canvas asks it
+for a new one every 10 minutes. It skips a refresh when the agent has done nothing
+since the last summary, so an idle chat costs no model turns.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/session-summary-dark.png">
+  <img alt="Session summary canvas: a headline with a linked pull request, an executive summary, running workstreams, what needs your attention, progress, next steps, and refresh settings" src="docs/session-summary-light.png" width="480">
+</picture>
 
 ## Build one
 

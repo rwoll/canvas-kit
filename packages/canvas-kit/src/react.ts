@@ -4,7 +4,7 @@ import type { ActionResult, AnyCanvas, JobInput, JobStatusOf, JobWithInputName, 
 import type { Interval, JobDefinitionInfo } from './jobs.ts';
 
 export { CanvasActionError, CanvasClient, formatInterval, getCanvasClient, intervalMs } from './client.ts';
-export type { AddJobOptions, CanvasSnapshot, ConnectionStatus, Interval, JobDefinitionInfo, JobStatus, RunAction } from './client.ts';
+export type { AddJobOptions, AgentActivity, CanvasSnapshot, ConnectionStatus, Interval, JobDefinitionInfo, JobStatus, RunAction } from './client.ts';
 
 export interface UseCanvas<C extends AnyCanvas> extends CanvasSnapshot<StateOf<C>> {
   run: RunAction<C>;

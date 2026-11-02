@@ -1,7 +1,7 @@
 {
   "name": "flaky-tests",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Triage flaky tests the agent finds, together with the agent.",
   "type": "module",
   "scripts": {

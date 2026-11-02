@@ -8,6 +8,7 @@ export type {
   ActionsOf,
   ActionSource,
   ActionSpec,
+  AgentActivity,
   AgentMessage,
   AnyCanvas,
   CanvasCsp,
