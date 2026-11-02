@@ -9,7 +9,10 @@ break things.
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-11-01
+## [0.2.1] - 2026-11-01
+
+The first published release with these changes. `v0.2.0` was tagged, but its
+release workflow failed before publishing, so 0.2.0 is not on npm.
 
 ### Changed
 
@@ -73,7 +76,7 @@ First release: typed canvas state and actions with Zod, a secure local host, Rea
 hooks, saved documents shared across chats, scheduled jobs, Vitest and Playwright
 helpers, the `canvas-kit` command, and `npm create @rwoll/canvas`.
 
-[Unreleased]: https://github.com/rwoll/canvas-kit/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/rwoll/canvas-kit/compare/v0.1.1...v0.2.0
+[Unreleased]: https://github.com/rwoll/canvas-kit/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/rwoll/canvas-kit/compare/v0.1.1...v0.2.1
 [0.1.1]: https://github.com/rwoll/canvas-kit/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/rwoll/canvas-kit/releases/tag/v0.1.0

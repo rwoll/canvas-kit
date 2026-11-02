@@ -540,7 +540,7 @@ jobs:
   publish:
     permissions:
       contents: write
-    uses: rwoll/canvas-kit/.github/workflows/marketplace.yml@<commit> # v0.2.0
+    uses: rwoll/canvas-kit/.github/workflows/marketplace.yml@<commit> # v0.2.1
     with:
       playwright: true      # when your check script runs browser tests
       environment: stable   # optional: approve each publish
