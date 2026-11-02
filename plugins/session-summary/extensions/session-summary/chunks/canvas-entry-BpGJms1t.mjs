@@ -2920,10 +2920,10 @@ function isRecursive(inst, stack, resolve) {
 		}
 	}
 	stack.delete(inst);
-	return settle(inst, result);
+	return settle$1(inst, result);
 }
 /** An assumed answer must not outlive the resolution that settles it, so only a certain one is cached. */
-function settle(inst, answer) {
+function settle$1(inst, answer) {
 	if (answer !== ASSUMED) recursive.set(inst, answer === PROVEN);
 	return answer;
 }
@@ -5926,6 +5926,134 @@ function defineCanvas(spec) {
 	};
 }
 //#endregion
+//#region ../../packages/canvas-kit/dist/server/activity.js
+var CANVAS_TOOLS = /* @__PURE__ */ new Set([
+	"invoke_canvas_action",
+	"open_canvas",
+	"list_canvas_capabilities",
+	"report_intent"
+]);
+var WORK_EVENTS = /* @__PURE__ */ new Set([
+	"subagent.started",
+	"subagent.completed",
+	"subagent.failed",
+	"session.background_tasks_changed",
+	"session.error",
+	"system.notification",
+	"session.todos_changed",
+	"session.plan_changed",
+	"user_input.requested",
+	"permission.requested",
+	"elicitation.requested",
+	"exit_plan_mode.requested"
+]);
+var BUSY_EVENTS = /* @__PURE__ */ new Set([
+	"user.message",
+	"assistant.turn_start",
+	"assistant.intent",
+	"tool.execution_start",
+	"subagent.started"
+]);
+var ENDED_EVENTS = /* @__PURE__ */ new Set(["assistant.turn_end", "abort"]);
+var MAX_REMEMBERED = 64;
+var record = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
+function remember(map, key, value) {
+	map.set(key, value);
+	if (map.size > MAX_REMEMBERED) map.delete(map.keys().next().value);
+}
+/**
+* Follows a session's events to tell canvases whether the agent is busy and when it
+* last did work of its own. Messages the canvas sent and canvas tool calls do not
+* count as work, so a canvas can tell its own requests apart from real progress.
+*/
+var AgentActivityTracker = class {
+	#now;
+	#listeners = /* @__PURE__ */ new Set();
+	#sent = /* @__PURE__ */ new Map();
+	#prompts = /* @__PURE__ */ new Map();
+	#canvasCalls = /* @__PURE__ */ new Map();
+	#busy = false;
+	#lastActivityAt;
+	#idleSince;
+	#lastTurnEvent;
+	constructor(now = Date.now) {
+		this.#now = now;
+	}
+	get activity() {
+		return {
+			busy: this.#busy,
+			...this.#lastActivityAt !== void 0 && { lastActivityAt: this.#lastActivityAt },
+			...this.#idleSince !== void 0 && { idleSince: this.#idleSince }
+		};
+	}
+	/** Called when the agent starts or stops being busy. Returns a function that unsubscribes. */
+	onChange(listener) {
+		this.#listeners.add(listener);
+		return () => this.#listeners.delete(listener);
+	}
+	/** Note a prompt before it is sent, so its message is recognized even if it arrives first. */
+	sending(prompt) {
+		if (prompt) remember(this.#prompts, prompt, true);
+	}
+	/** Note the ID the session gave a message this host sent. */
+	sent(messageId) {
+		if (typeof messageId === "string" && messageId) remember(this.#sent, messageId, true);
+	}
+	ingest(event) {
+		if (!event || typeof event.type !== "string") return;
+		const data = record(event.data);
+		const parsed = typeof event.timestamp === "string" ? Date.parse(event.timestamp) : NaN;
+		const at = Number.isFinite(parsed) ? parsed : this.#now();
+		const wasBusy = this.#busy;
+		if (event.type === "session.idle") {
+			this.#busy = false;
+			this.#idleSince = at;
+		} else if (BUSY_EVENTS.has(event.type)) this.#busy = true;
+		if (BUSY_EVENTS.has(event.type) || ENDED_EVENTS.has(event.type)) this.#lastTurnEvent = {
+			ended: ENDED_EVENTS.has(event.type),
+			at
+		};
+		if (this.#isWork(event.type, data)) this.#lastActivityAt = Math.max(this.#lastActivityAt ?? at, at);
+		if (wasBusy !== this.#busy) this.#changed();
+	}
+	/**
+	* Call after replaying the session history. The history never has `session.idle`,
+	* so if its last turn ended, the agent has been idle since then.
+	*/
+	historyEnded() {
+		const last = this.#lastTurnEvent;
+		if (!this.#busy || !last?.ended) return;
+		this.#busy = false;
+		this.#idleSince = Math.max(this.#idleSince ?? last.at, last.at);
+		this.#changed();
+	}
+	#changed() {
+		for (const listener of this.#listeners) listener();
+	}
+	#isWork(type, data) {
+		switch (type) {
+			case "user.message": return !this.#fromCanvas(data);
+			case "tool.execution_start": {
+				const canvasTool = CANVAS_TOOLS.has(String(data.toolName));
+				if (typeof data.toolCallId === "string") remember(this.#canvasCalls, data.toolCallId, canvasTool);
+				return !canvasTool;
+			}
+			case "tool.execution_complete": {
+				const canvasTool = typeof data.toolCallId === "string" ? this.#canvasCalls.get(data.toolCallId) : void 0;
+				if (typeof data.toolCallId === "string") this.#canvasCalls.delete(data.toolCallId);
+				return canvasTool === false;
+			}
+			default: return WORK_EVENTS.has(type);
+		}
+	}
+	#fromCanvas(data) {
+		if (typeof data.messageId === "string" && this.#sent.has(data.messageId)) return true;
+		const texts = [data.content, data.transformedContent].filter((text) => typeof text === "string");
+		for (const prompt of this.#prompts.keys()) if (texts.some((text) => text.includes(prompt))) return true;
+		return false;
+	}
+};
+//#endregion
 //#region ../../packages/canvas-kit/dist/server/release.js
 var stampSchema = object({
 	publishedAt: datetime(),
@@ -6218,6 +6346,7 @@ var StateStore = class {
 var allows = (controls, source) => controls === "both" || controls === source;
 var MAX_BODY_BYTES = 1048576;
 var HEARTBEAT_MS = 15e3;
+var HISTORY_WAIT_MS = 5e3;
 var INSTANCE_PATH = /^\/c\/([0-9a-f]{32})(\/.*)?$/;
 var CONTENT_TYPES = {
 	".html": "text/html; charset=utf-8",
@@ -6314,6 +6443,11 @@ var CanvasHost = class {
 	#jobTimer;
 	#ticking = false;
 	#now;
+	#activity;
+	#session;
+	#sessionId;
+	#history = Promise.resolve();
+	#unsubscribe;
 	constructor(canvas, options = {}) {
 		if (canvas?.kind !== "canvas-kit/canvas") throw new Error("Expected a canvas created with defineCanvas()");
 		this.canvas = canvas;
@@ -6322,9 +6456,70 @@ var CanvasHost = class {
 		this.#dataDir = canvasDataDir(canvas.id, options.dataRoot);
 		this.#csp = contentSecurityPolicy(canvas.csp);
 		this.#store = canvas.persist ? new StateStore(this.#dataDir, canvas.state, canvas.persist.version, options.store) : void 0;
+		this.#activity = new AgentActivityTracker(this.#now);
+		this.#activity.onChange(() => {
+			for (const instance of this.#instances.values()) this.#send(instance);
+		});
+	}
+	/** What the agent in this chat is doing, as `ctx.agent` reports it. */
+	get agent() {
+		return this.#activity.activity;
+	}
+	/** The session's ID once a page has opened, as `ctx.sessionId` reports it. */
+	get sessionId() {
+		return this.#sessionId;
 	}
 	log(message, level = "info") {
 		this.#options.log?.(message, level);
+	}
+	/**
+	* Join the session once: follow its events, and read its history so work done
+	* before the canvas opened counts too. Live events wait until the history is in.
+	*/
+	#connectSession() {
+		this.#session ??= Promise.resolve(this.#options.session).then((session) => {
+			if (session) this.#follow(session);
+			return session;
+		}, (error) => {
+			this.log(`Could not follow the session: ${errorMessage(error)}`, "warning");
+		});
+		return this.#session;
+	}
+	#follow(session) {
+		this.#sessionId = session.sessionId;
+		let buffered = [];
+		this.#unsubscribe = session.on((event) => {
+			if (buffered) buffered.push(event);
+			else this.#activity.ingest(event);
+		});
+		this.#history = (async () => {
+			const seen = /* @__PURE__ */ new Set();
+			try {
+				for (const event of await session.getEvents?.() ?? []) {
+					if (typeof event.id === "string") seen.add(event.id);
+					this.#activity.ingest(event);
+				}
+				this.#activity.historyEnded();
+			} catch (error) {
+				this.log(`Could not read the session history: ${errorMessage(error)}`, "warning");
+			} finally {
+				for (const event of buffered ?? []) if (typeof event.id !== "string" || !seen.has(event.id)) this.#activity.ingest(event);
+				buffered = void 0;
+			}
+		})();
+	}
+	/** Wait a few seconds at most for the session history, so jobs see earlier activity. */
+	async #historyLoaded() {
+		let timer;
+		const limit = new Promise((done) => {
+			timer = setTimeout(done, HISTORY_WAIT_MS);
+			timer.unref();
+		});
+		try {
+			await Promise.race([this.#history, limit]);
+		} finally {
+			clearTimeout(timer);
+		}
 	}
 	/** Open or reopen an instance and return the URL of its page. */
 	async open(request) {
@@ -6382,6 +6577,8 @@ var CanvasHost = class {
 	async close() {
 		clearInterval(this.#jobTimer);
 		this.#jobTimer = void 0;
+		this.#unsubscribe?.();
+		this.#unsubscribe = void 0;
 		await Promise.all([...this.#instances.keys()].map((id) => this.closeInstance(id)));
 		this.#unwatch();
 		await this.#stopServer();
@@ -6394,6 +6591,7 @@ var CanvasHost = class {
 		if (this.#ticking || this.canvas.jobs.size === 0) return;
 		this.#ticking = true;
 		try {
+			await this.#historyLoaded();
 			const slots = new Set([...this.#instances.values()].map((instance) => instance.slot));
 			for (const slot of slots) for (const entry of this.#entries(slot.jobs)) {
 				if (!this.#due(entry)) continue;
@@ -6416,6 +6614,7 @@ var CanvasHost = class {
 		const job = this.#jobFor(id);
 		if (job.input && id === job.name) throw new CanvasKitError("invalid_input", `${id} takes input, so only the jobs added from it run; pass one of their IDs`);
 		const slot = await this.#slotForJob(options);
+		await this.#historyLoaded();
 		const outcome = await this.#withLock(slot.lock, () => this.#runJobFor(slot, id, options.force ?? true, options.headless ?? false));
 		if (!outcome) throw new CanvasKitError("not_found", `No job ${id} in this document`);
 		return outcome;
@@ -6428,6 +6627,7 @@ var CanvasHost = class {
 	async runJobs(selector, options = {}) {
 		if (selector !== void 0) this.#jobFor(selector);
 		const slot = await this.#slotForJob(options);
+		await this.#historyLoaded();
 		const outcomes = [];
 		const selected = this.#entries(slot.jobs).filter((entry) => selector === void 0 || entry.id === selector || entry.job.name === selector);
 		for (const entry of selected) try {
@@ -6720,6 +6920,7 @@ var CanvasHost = class {
 		return {
 			revision: slot.revision,
 			state: slot.state,
+			agent: this.#activity.activity,
 			...this.canvas.jobs.size > 0 && { jobs: this.#entries(slot.jobs).map((entry) => this.#jobStatus(entry)) }
 		};
 	}
@@ -6858,12 +7059,20 @@ var CanvasHost = class {
 			};
 			const before = slot.state;
 			let changed = false;
+			const activity = this.#activity;
 			const ctx = {
 				canvasId: this.canvas.id,
 				job: job.name,
 				id,
 				key: slot.persistKey,
+				instanceIds: [...slot.instances].map((instance) => instance.instanceId),
+				sessionId: this.#sessionId,
+				get agent() {
+					return activity.activity;
+				},
 				headless,
+				manual: force,
+				every: this.#everyMs(entry),
 				lastRunAt: entry.record?.lastRunAt,
 				get state() {
 					return slot.state;
@@ -6927,8 +7136,9 @@ var CanvasHost = class {
 		return async (message) => {
 			const send = this.#options.sendToAgent;
 			if (!send) throw new CanvasKitError("agent_unavailable", "No agent session is connected to this canvas", 503);
+			this.#activity.sending(message.prompt);
 			try {
-				await send(message);
+				this.#activity.sent(await send(message));
 			} catch (error) {
 				throw new CanvasKitError("send_failed", `Could not message the agent: ${errorMessage(error)}`, 502);
 			}
@@ -6942,12 +7152,14 @@ var CanvasHost = class {
 		if (!this.#store || !this.canvas.persist) return void 0;
 		const key = this.canvas.persist.key({
 			instanceId,
-			input
+			input,
+			sessionId: this.#sessionId
 		});
 		if (typeof key !== "string" || key.length === 0) throw new Error("persist.key() must return a non-empty string");
 		return key;
 	}
 	async #openInstance(instanceId, rawInput) {
+		await this.#connectSession();
 		const input = await this.#parseOpenInput(rawInput);
 		const persistKey = this.#persistKeyFor(instanceId, input);
 		const existing = this.#instances.get(instanceId);
@@ -6982,7 +7194,8 @@ var CanvasHost = class {
 			else {
 				const init = async () => parseWith(this.canvas.state, await this.canvas.init({
 					instanceId: instance.instanceId,
-					input
+					input,
+					sessionId: this.#sessionId
 				}), "init() returned invalid state");
 				const store = persistKey === void 0 ? void 0 : this.#store;
 				if (store && persistKey !== void 0) {
@@ -7038,7 +7251,8 @@ var CanvasHost = class {
 			const next = await this.canvas.reopen({
 				instanceId,
 				input,
-				state: slot.state
+				state: slot.state,
+				sessionId: this.#sessionId
 			});
 			if (next === void 0) return;
 			const state = await parseWith(this.canvas.state, next, "reopen() returned invalid state");
@@ -7059,9 +7273,14 @@ var CanvasHost = class {
 		return this.#transact(slot, async () => {
 			const before = slot.state;
 			let changed = false;
+			const activity = this.#activity;
 			const ctx = {
 				canvasId: this.canvas.id,
 				instanceId: instance.instanceId,
+				sessionId: this.#sessionId,
+				get agent() {
+					return activity.activity;
+				},
 				source: request.source,
 				get state() {
 					return slot.state;
@@ -7274,136 +7493,224 @@ async function runCanvasJob(canvas, job, options = {}) {
 }
 //#endregion
 //#region server/canvas.ts
-var flake = object({
-	id: string(),
-	name: string(),
-	failures: number().int().min(1),
-	runs: number().int().min(1),
-	triaged: boolean(),
-	/** When it was triaged, so old triaged tests can be pruned. */
-	triagedAt: string().optional()
+var STATUSES = [
+	"working",
+	"waiting",
+	"blocked",
+	"idle",
+	"done"
+];
+var ITEM_STATES = [
+	"running",
+	"queued",
+	"waiting",
+	"blocked",
+	"done",
+	"failed"
+];
+var REFERENCE_GUIDANCE = "Write each GitHub issue or pull request reference as a full URL (https://github.com/<owner>/<repo>/pull/<number> or …/issues/<number>), never as #<number> or <owner>/<repo>#<number>; the canvas shows it as a short owner/repo#number link. Cite only references you have seen.";
+var line = (max) => string().trim().min(1).max(max);
+var markdown = (max) => string().transform((text) => text.replace(/\r\n?/g, "\n").replace(/^(?:[ \t]*\n)+/, "").trimEnd()).pipe(string().max(max));
+var runningItem = object({
+	title: line(120),
+	detail: string().trim().max(400).default(""),
+	state: _enum(ITEM_STATES).default("running")
 });
-/** Triaged tests are removed this long after triage. */
-var KEEP_TRIAGED_MS = 6048e5;
+var summaryInput = object({
+	headline: line(240).describe("One line on where the work stands."),
+	status: _enum(STATUSES),
+	executiveSummary: markdown(4e3).default("").describe("2-4 Markdown sentences: the goal, the current outcome, the key risk or decision, and the next milestone."),
+	running: array(union([line(120).transform((title) => ({
+		title,
+		detail: "",
+		state: "running"
+	})), runningItem.strict()])).max(12).default([]).describe("Workstreams in flight, not individual commands or tool calls."),
+	attention: array(line(300)).max(8).default([]).describe("What needs the user: decisions, approvals, or questions."),
+	progress: array(line(300)).max(10).default([]).describe("Recent results."),
+	next: array(line(300)).max(8).default([]).describe("The next steps."),
+	notes: string().trim().max(1e3).default("")
+}).strict();
+var summary = object({
+	headline: string(),
+	status: _enum(STATUSES),
+	executiveSummary: string(),
+	running: array(object({
+		title: string(),
+		detail: string(),
+		state: _enum(ITEM_STATES)
+	})),
+	attention: array(string()),
+	progress: array(string()),
+	next: array(string()),
+	notes: string(),
+	revision: number().int().min(1),
+	updatedAt: string()
+});
+var pending = object({
+	trigger: _enum(["schedule", "manual"]),
+	requestedAt: string()
+});
+var outcome = object({
+	kind: _enum([
+		"skipped",
+		"unanswered",
+		"expired",
+		"send_failed"
+	]),
+	at: string(),
+	detail: string()
+});
+/**
+* What became of a refresh the agent has not answered: it finished a turn without
+* updating the summary, or never picked the request up. Undefined while it may still answer.
+*/
+function settle(request, agent, now) {
+	if (agent.busy) return void 0;
+	const requestedAt = Date.parse(request.requestedAt);
+	const at = new Date(now).toISOString();
+	if (agent.idleSince !== void 0 && agent.idleSince > requestedAt) return {
+		kind: "unanswered",
+		at,
+		detail: "The agent finished without updating the summary."
+	};
+	if (now - requestedAt >= 9e5) return {
+		kind: "expired",
+		at,
+		detail: "The agent did not pick up the request."
+	};
+}
+function refreshPrompt(instanceId, trigger) {
+	return [
+		`The Session summary canvas asks for a refresh (${trigger === "manual" ? "requested by the user" : "scheduled"}). Call invoke_canvas_action with instanceId ${JSON.stringify(instanceId)}, actionName "update_summary", and a concise executive summary of this chat's work.`,
+		"- Use only facts you have observed, and say so when you are unsure.",
+		"- executiveSummary: 2-4 Markdown sentences on the goal, the current outcome, the key risk or decision, and the next milestone, not a repeat of the lists.",
+		"- Say whether the work is on track, the meaningful workstreams, anything that needs the user, recent results, and the next milestone. Do not list individual commands, tool calls, or finished shell jobs.",
+		`- ${REFERENCE_GUIDANCE}`,
+		"- If the work is done, cancelled, or blocked with nothing to monitor, pause these refreshes with actionName \"update_job\" and {\"id\":\"refresh\",\"enabled\":false}; resume them with {\"id\":\"refresh\",\"enabled\":true} when substantive work starts again. Follow what the user asked for, and change the interval only when they ask.",
+		"- Do not start new work. Afterwards, reply with at most one short line and carry on."
+	].join("\n");
+}
 var canvas_default = defineCanvas({
-	id: "canvas-kit-flaky-tests",
-	title: "Flaky tests",
-	description: "Triage flaky tests the agent finds, together with the agent.",
-	input: object({ repo: string().regex(/^[\w.-]+\/[\w.-]+$/, "must be owner/name") }),
+	id: "canvas-kit-session-summary",
+	title: "Session summary",
+	description: "An executive summary of this chat's work that the agent keeps up to date on a schedule.",
 	state: object({
-		repo: string(),
-		tests: array(flake),
-		nextId: number().int().min(1),
-		/** Triage notes the agent writes, in Markdown. */
-		notes: string().max(2e4).default("")
+		summary: summary.nullable(),
+		/** Skip a scheduled refresh when the agent is idle and has done nothing since the last summary. */
+		skipWhenIdle: boolean(),
+		pending: pending.nullable(),
+		lastOutcome: outcome.nullable()
 	}),
-	init: ({ input }) => ({
-		repo: input.repo,
-		tests: [],
-		nextId: 1
+	init: () => ({
+		summary: null,
+		skipWhenIdle: true,
+		pending: null,
+		lastOutcome: null
 	}),
-	persist: { key: ({ input }) => input.repo },
+	persist: { key: ({ sessionId }) => sessionId ?? "local" },
+	status: (state) => state.summary?.headline ?? "Waiting for the first summary",
 	actions: ({ action }) => ({
-		set_notes: action({
-			description: "Write triage notes under the flaky tests, such as likely causes and links to failing runs. Markdown: headings, lists, task lists, bold, italic, code, and links. Replaces the current notes; pass an empty string to clear them.",
+		update_summary: action({
+			description: `Replace the summary shown in this canvas. Call it when a message from the canvas asks for a refresh, when the user asks for a summary, or at milestones. Report only facts you have observed. ${REFERENCE_GUIDANCE} Keep running, attention, progress, and next at the level of workstreams, not commands or tool calls. When the work is done, cancelled, or blocked with nothing to monitor, pause refreshes with update_job {"id":"refresh","enabled":false}, and resume them when substantive work starts again.`,
 			expose: "agent",
-			input: object({ markdown: string().max(2e4) }),
-			run: (ctx, { markdown }) => ctx.setState((state) => ({
-				...state,
-				notes: markdown.trim()
-			}))
-		}),
-		report_flaky: action({
-			description: "Record a flaky test and how often it failed recently. Reporting a test again updates its counts.",
-			expose: "agent",
-			input: object({
-				name: string().trim().min(1).max(200),
-				failures: number().int().min(1),
-				runs: number().int().min(1).max(1e4)
-			}).refine((input) => input.failures <= input.runs, "failures cannot exceed runs"),
-			run: (ctx, { name, failures, runs }) => {
-				const existing = ctx.state.tests.find((test) => test.name === name);
-				if (existing) {
-					ctx.setState((state) => ({
-						...state,
-						tests: state.tests.map((test) => test.id === existing.id ? {
-							...test,
-							failures,
-							runs
-						} : test)
-					}));
-					return { id: existing.id };
-				}
-				const id = `t${ctx.state.nextId}`;
+			input: summaryInput,
+			run: (ctx, input) => {
+				const revision = (ctx.state.summary?.revision ?? 0) + 1;
+				const updatedAt = new Date(ctx.now()).toISOString();
 				ctx.setState((state) => ({
 					...state,
-					tests: [...state.tests, {
-						id,
-						name,
-						failures,
-						runs,
-						triaged: false
-					}],
-					nextId: state.nextId + 1
+					summary: {
+						...input,
+						revision,
+						updatedAt
+					},
+					pending: null,
+					lastOutcome: null
 				}));
-				return { id };
+				return {
+					revision,
+					updatedAt
+				};
 			}
 		}),
-		set_triaged: action({
-			description: "Mark a flaky test triaged or open again.",
-			input: object({
-				id: string(),
-				triaged: boolean()
-			}),
-			run: (ctx, { id, triaged }) => {
-				if (!ctx.state.tests.some((test) => test.id === id)) throw new CanvasKitError("not_found", `No test ${id}`);
-				const triagedAt = triaged ? new Date(ctx.now()).toISOString() : void 0;
+		set_skip_when_idle: action({
+			description: "Skip scheduled refreshes while the agent is idle and has done nothing since the last summary, so an unchanged chat costs no model turns. On by default; change it only when the user asks.",
+			input: object({ enabled: boolean() }).strict(),
+			run: (ctx, { enabled }) => {
 				ctx.setState((state) => ({
 					...state,
-					tests: state.tests.map((test) => test.id === id ? {
-						...test,
-						triaged,
-						...triagedAt ? { triagedAt } : { triagedAt: void 0 }
-					} : test)
+					skipWhenIdle: enabled
 				}));
-			}
-		}),
-		ask_to_fix: action({
-			description: "Ask the agent to fix the flakiest test that is not triaged yet.",
-			expose: "ui",
-			run: async (ctx) => {
-				const worst = worstOpen(ctx.state.tests);
-				if (!worst) throw new CanvasKitError("nothing_open", "Every flaky test is triaged.");
-				await ctx.sendToAgent({
-					prompt: `In ${ctx.state.repo}, find and fix the cause of the flaky test "${worst.name}" (failed ${worst.failures} of ${worst.runs} recent runs).`,
-					displayPrompt: `Flaky tests · fix ${worst.name}`
-				});
 			}
 		})
 	}),
-	jobs: ({ job }) => ({ prune_triaged: job({
-		every: "1h",
+	jobs: ({ job }) => ({ refresh: job({
+		every: "10m",
+		minEvery: "1m",
+		maxEvery: "1d",
 		controls: "both",
-		minEvery: "15m",
-		maxEvery: "7d",
-		description: "Remove tests triaged more than a week ago.",
-		run: (ctx) => {
-			const cutoff = ctx.now() - KEEP_TRIAGED_MS;
-			const keep = ctx.state.tests.filter((test) => !test.triaged || !test.triagedAt || Date.parse(test.triagedAt) > cutoff);
-			if (keep.length !== ctx.state.tests.length) {
-				ctx.log(`Pruned ${ctx.state.tests.length - keep.length} triaged tests`);
+		description: "Ask the agent for a new summary. Pause it when the work is done, cancelled, or blocked with nothing to monitor, resume it when work starts again, and change the interval only when the user asks.",
+		run: async (ctx) => {
+			if (ctx.headless) return;
+			const now = ctx.now();
+			const at = new Date(now).toISOString();
+			const trigger = ctx.manual ? "manual" : "schedule";
+			const waiting = ctx.state.pending;
+			if (waiting) {
+				if (ctx.manual && waiting.trigger === "manual" && now - Date.parse(waiting.requestedAt) < 3e3) return;
+				const settled = settle(waiting, ctx.agent, now);
+				if (settled) ctx.setState((state) => ({
+					...state,
+					pending: null,
+					lastOutcome: settled
+				}));
+				else if (!ctx.manual) return;
+			}
+			const current = ctx.state.summary;
+			if (!ctx.manual && current) {
+				const updatedAt = Date.parse(current.updatedAt);
+				if (now - updatedAt < ctx.every / 2) return;
+				if (ctx.state.skipWhenIdle && !ctx.agent.busy && (ctx.agent.lastActivityAt ?? 0) <= updatedAt) {
+					ctx.setState((state) => ({
+						...state,
+						lastOutcome: {
+							kind: "skipped",
+							at,
+							detail: "Nothing happened since the last summary."
+						}
+					}));
+					return;
+				}
+			}
+			const instanceId = ctx.instanceIds.at(-1);
+			if (!instanceId) return;
+			ctx.setState((state) => ({
+				...state,
+				pending: {
+					trigger,
+					requestedAt: at
+				}
+			}));
+			try {
+				await ctx.sendToAgent({
+					prompt: refreshPrompt(instanceId, trigger),
+					displayPrompt: "Session summary · refresh",
+					mode: "immediate"
+				});
+			} catch (error) {
 				ctx.setState((state) => ({
 					...state,
-					tests: keep
+					pending: null,
+					lastOutcome: {
+						kind: "send_failed",
+						at,
+						detail: error instanceof Error ? error.message : String(error)
+					}
 				}));
 			}
 		}
 	}) })
 });
-/** The open test that fails most often, by failure rate. */
-function worstOpen(tests) {
-	return tests.filter((test) => !test.triaged).sort((a, b) => b.failures / b.runs - a.failures / a.runs)[0];
-}
 //#endregion
 //#region \0virtual:canvas-kit/canvas-entry
 var canvas_entry_default = canvas_default;

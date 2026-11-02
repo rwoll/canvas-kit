@@ -1,4 +1,4 @@
-import { a as CanvasKitError, i as loadRelease, o as errorMessage, r as CanvasHost, t as canvas_entry_default } from "./chunks/canvas-entry-aM4kn3Qz.mjs";
+import { a as CanvasKitError, i as loadRelease, o as errorMessage, r as CanvasHost, t as canvas_entry_default } from "./chunks/canvas-entry-Dqp4cR5s.mjs";
 import { CanvasError, createCanvas, joinSession } from "@github/copilot-sdk/extension";
 import { fileURLToPath } from "node:url";
 //#region ../../packages/canvas-kit/dist/extension.js
@@ -22,13 +22,17 @@ async function runCanvasExtension(canvas, options) {
 		Promise.resolve(session.log(message, { level })).catch(() => {});
 	};
 	const { release, warning } = await loadRelease(toPath(options.releaseFile), options.plugin);
+	let joined;
 	const host = new CanvasHost(canvas, {
 		uiDir: toPath(options.uiDir),
 		release,
 		log,
+		session: new Promise((resolve) => {
+			joined = resolve;
+		}),
 		sendToAgent: async (message) => {
 			if (!session) throw new Error("The canvas has not joined a session yet");
-			await session.send(message);
+			return session.send(message);
 		}
 	});
 	session = await joinSession({ canvases: [createCanvas({
@@ -54,6 +58,12 @@ async function runCanvasExtension(canvas, options) {
 		onClose: (ctx) => guard(() => host.closeInstance(ctx.instanceId))
 	})] });
 	if (warning) log(warning, "warning");
+	const joinedSession = session;
+	joined({
+		sessionId: joinedSession.sessionId,
+		on: (handler) => joinedSession.on(handler),
+		getEvents: () => joinedSession.getEvents()
+	});
 	const shutdown = () => {
 		host.close().finally(() => process.exit(0));
 	};
@@ -71,7 +81,7 @@ await runCanvasExtension(canvas_entry_default, {
 	releaseFile: new URL("../../release.json", import.meta.url),
 	plugin: {
 		"name": "release-board",
-		"version": "0.4.0"
+		"version": "0.4.1"
 	}
 });
 //#endregion
