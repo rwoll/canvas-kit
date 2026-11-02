@@ -83,7 +83,7 @@ jobs:
       - name: Check
         run: |
           pnpm check
-          pnpm -r --workspace-concurrency=1 --if-present run playwright:install --with-deps
+          pnpm -r --include-workspace-root --workspace-concurrency=1 --if-present run playwright:install --with-deps
           pnpm e2e
           pnpm consumer-test --no-e2e
 
