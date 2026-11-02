@@ -54,7 +54,7 @@ try {
   run('pnpm', ['install'], market);
   run('pnpm', ['check'], market);
   if (!values['no-e2e']) {
-    run('pnpm', ['--filter', 'board', 'exec', 'playwright', 'install', 'chromium'], market);
+    run('pnpm', ['run', 'playwright:install'], market);
     run('pnpm', ['e2e'], market);
   }
   console.log(`\nConsumer test passed in ${market}.`);

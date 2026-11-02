@@ -9,6 +9,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const kitRoot = fileURLToPath(new URL('..', import.meta.url));
 const templateDir = join(kitRoot, 'templates', 'canvas');
 const uiTemplateDir = join(kitRoot, 'templates', 'ui');
+const projectTemplateDir = join(kitRoot, 'templates', 'project');
+/** Where a project's canvases live; `canvasKit()` in vite.config.ts builds every folder here. */
+export const CANVASES_DIR = 'canvases';
 
 /** The repository that hosts the reusable workflow. Update when the repository is renamed. */
 export const KIT_REPOSITORY = 'rwoll/canvas-kit';
@@ -20,7 +23,7 @@ const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const REPOSITORY = /^[\w.-]+\/[\w.-]+$/;
 
 /**
- * Versions written into new canvases. A test keeps them in step with the kit's
+ * Versions written into new projects. A test keeps them in step with the kit's
  * own workspace catalog.
  */
 export const VERSIONS = {
@@ -97,7 +100,6 @@ export async function loadConfig(dir) {
     publishBranch: 'stable',
     sourceBranch: 'main',
     pluginsDir: 'plugins',
-    canvasesDir: 'canvases',
     outDir: 'dist/marketplace',
     checkScript: 'check',
     ...raw,
@@ -116,12 +118,11 @@ const escapers = {
 };
 
 /** Fill the empty dependency ranges of a template package.json. */
-async function fillVersions(pkg, { catalog, kitRange }) {
+async function fillVersions(pkg) {
   for (const field of ['dependencies', 'devDependencies']) {
     for (const dependency of Object.keys(pkg[field] ?? {})) {
       if (pkg[field][dependency]) continue;
-      if (dependency === '@rwoll/canvas-kit') pkg[field][dependency] = kitRange ?? (catalog ? 'catalog:' : `^${await kitVersion()}`);
-      else if (catalog) pkg[field][dependency] = 'catalog:';
+      if (dependency === '@rwoll/canvas-kit') pkg[field][dependency] = `^${await kitVersion()}`;
       else if (VERSIONS[dependency]) pkg[field][dependency] = VERSIONS[dependency];
       else throw new CliError(`no version for template dependency ${dependency}`);
     }
@@ -130,13 +131,13 @@ async function fillVersions(pkg, { catalog, kitRange }) {
 }
 
 /** Copy a template folder, replacing placeholders and filling package.json ranges. */
-async function writeTemplate(from, target, replacements, versions) {
+async function writeTemplate(from, target, replacements) {
   for (const source of await templateFiles(from)) {
     const escape = escapers[extname(source)];
     if (!escape) throw new CliError(`no escaping rule for template file ${relative(from, source)}`);
     let content = await readFile(source, 'utf8');
     for (const [placeholder, value] of Object.entries(replacements)) content = content.replaceAll(placeholder, escape(value));
-    if (relative(from, source) === 'package.json') content = `${JSON.stringify(await fillVersions(JSON.parse(content), versions), null, 2)}\n`;
+    if (relative(from, source) === 'package.json') content = `${JSON.stringify(await fillVersions(JSON.parse(content)), null, 2)}\n`;
     const destination = join(target, relative(from, source));
     await mkdir(join(destination, '..'), { recursive: true });
     await writeFile(destination, content);
@@ -151,38 +152,14 @@ async function patch(file, from, to) {
 }
 
 /**
- * Create the marketplace's shared UI package: React components and a theme that
+ * Create a project's shared UI folder, `ui/`: React components and a theme that
  * every canvas imports, so canvases look the same and branding changes in one place.
  */
-export async function createUiPackage(marketplaceDir, uiName, options = {}) {
-  if (!/^(@[a-z0-9-]+\/)?[a-z0-9-]+$/.test(uiName)) throw new CliError(`"${uiName}" is not a valid package name`);
-  const target = join(marketplaceDir, options.folder ?? 'ui');
-  if (await exists(target)) throw new CliError(`${relative(marketplaceDir, target) || target} already exists`);
-  await writeTemplate(uiTemplateDir, target, { __UI_NAME__: uiName }, { catalog: options.dependencies === 'catalog' });
-  return { dir: target, name: uiName };
-}
-
-/**
- * Add a shared UI package to an existing marketplace: create it, record it as
- * `ui` in marketplace.config.json, and add it to pnpm-workspace.yaml.
- */
-export async function addUiPackage(marketplaceDir, uiName, options = {}) {
-  const config = await loadConfig(marketplaceDir);
-  if (config.ui) throw new CliError(`${CONFIG_FILE} already names a shared UI package, ${config.ui}`);
-  const folder = options.folder ?? 'ui';
-  const ui = await createUiPackage(marketplaceDir, uiName, { ...options, folder });
-  const configFile = join(marketplaceDir, CONFIG_FILE);
-  await writeFile(configFile, `${JSON.stringify({ ...JSON.parse(await readFile(configFile, 'utf8')), ui: uiName }, null, 2)}\n`);
-  const workspace = join(marketplaceDir, 'pnpm-workspace.yaml');
-  let workspaceUpdated = false;
-  if (await exists(workspace)) {
-    const yaml = await readFile(workspace, 'utf8');
-    if (/^packages:\s*$/m.test(yaml) && !new RegExp(`^\\s*-\\s*['"]?${folder}['"]?\\s*$`, 'm').test(yaml)) {
-      await writeFile(workspace, yaml.replace(/^packages:\s*$/m, `packages:\n  - ${folder}`));
-      workspaceUpdated = true;
-    }
-  }
-  return { ...ui, workspaceUpdated };
+export async function addUi(projectDir) {
+  const target = join(projectDir, 'ui');
+  if (await exists(target)) throw new CliError(`${relative(projectDir, target) || target} already exists`);
+  await writeTemplate(uiTemplateDir, target, {});
+  return { dir: target };
 }
 
 async function templateFiles(dir) {
@@ -196,13 +173,11 @@ async function templateFiles(dir) {
 }
 
 /**
- * Create a canvas package from the template under the marketplace's canvases folder.
- * `dependencies: 'catalog'` writes `catalog:` ranges, for pnpm workspaces with a catalog.
+ * Add a canvas to a project: `canvases/<name>/` with `canvas.ts`, `App.tsx`, and
+ * tests. It uses the project's shared `ui/` when there is one.
  */
-export async function newCanvas(marketplaceDir, name, options = {}) {
+export async function newCanvas(projectDir, name, options = {}) {
   if (!KEBAB.test(name)) throw new CliError(`"${name}" must be kebab-case, for example release-board`);
-  const config = (await exists(join(marketplaceDir, CONFIG_FILE))) ? await loadConfig(marketplaceDir) : undefined;
-  const canvasesDir = join(marketplaceDir, config?.canvasesDir ?? 'canvases');
   const id = options.id ?? (options.idPrefix ? `${options.idPrefix}-${name}` : name);
   if (!KEBAB.test(id)) throw new CliError(`canvas id "${id}" must be kebab-case`);
   const title = (options.title ?? name.replace(/-/g, ' ').replace(/^./, char => char.toUpperCase())).trim();
@@ -210,33 +185,27 @@ export async function newCanvas(marketplaceDir, name, options = {}) {
   if (!title || !description) throw new CliError('title and description must not be empty');
   if (/[\r\n]/.test(title + description)) throw new CliError('title and description must be a single line');
 
-  const target = join(canvasesDir, name);
-  if (await exists(target)) throw new CliError(`${relative(marketplaceDir, target) || target} already exists`);
-  if (config && (await exists(join(marketplaceDir, config.pluginsDir, name)))) {
-    throw new CliError(`${config.pluginsDir}/${name} already exists; plugin names must be unique`);
-  }
+  const target = join(projectDir, CANVASES_DIR, name);
+  if (await exists(target)) throw new CliError(`${relative(projectDir, target) || target} already exists`);
+  await writeTemplate(templateDir, target, { __CANVAS_ID__: id, __TITLE__: title, __DESCRIPTION__: description });
 
-  const replacements = { __NAME__: name, __CANVAS_ID__: id, __TITLE__: title, __DESCRIPTION__: description };
-  await writeTemplate(templateDir, target, replacements, { catalog: options.dependencies === 'catalog', kitRange: options.kitRange });
-
-  // Use the marketplace's shared components and theme, so every canvas looks the same.
-  const ui = options.ui === undefined ? config?.ui : options.ui;
+  // Use the project's shared components and theme, so every canvas looks the same.
+  const ui = options.ui !== false && (await exists(join(projectDir, 'ui', 'index.ts')));
   if (ui) {
-    const pkgFile = join(target, 'package.json');
-    const pkg = JSON.parse(await readFile(pkgFile, 'utf8'));
-    pkg.dependencies = Object.fromEntries(Object.entries({ ...pkg.dependencies, [ui]: 'workspace:*' }).sort(([a], [b]) => a.localeCompare(b)));
-    await writeFile(pkgFile, `${JSON.stringify(pkg, null, 2)}\n`);
-    await patch(join(target, 'src', 'main.tsx'), "import '@rwoll/canvas-kit/styles.css'\n", `import '@rwoll/canvas-kit/styles.css'\nimport '${ui}/theme.css'\n`);
-    const app = join(target, 'src', 'App.tsx');
-    await patch(app, "import type canvas from '../server/canvas.ts'\n", `import { Header } from '${ui}'\nimport type canvas from '../server/canvas.ts'\n`);
+    const app = join(target, 'App.tsx');
+    await patch(app, "import type canvas from './canvas.ts'\n", "import { Header } from '../../ui'\nimport type canvas from './canvas.ts'\nimport '../../ui/theme.css'\n");
     await patch(app, '<h1>{TITLE}</h1>', '<Header title={TITLE} />');
   }
-  return { dir: target, name, id, title, ...(ui && { ui }) };
+  return { dir: target, name, id, title, ui };
 }
 
 // ---------- marketplaces ----------
 
-/** Create a marketplace repository: config, workspace, publish workflow, and optionally a first canvas. */
+/**
+ * Create a marketplace repository: one canvas project (package.json, vite.config.ts,
+ * tsconfig.json, playwright.config.ts, a shared ui/ folder, and canvases/), the
+ * publish workflow, and optionally a first canvas.
+ */
 export async function initMarketplace(dir, options) {
   const { name, owner, repository } = options;
   if (!KEBAB.test(name)) throw new CliError(`marketplace name "${name}" must be kebab-case`);
@@ -245,32 +214,14 @@ export async function initMarketplace(dir, options) {
   if ((await exists(dir)) && (await readdir(dir)).length > 0) throw new CliError(`${dir} is not empty`);
   const version = await kitVersion();
   const ref = await workflowRef();
-  const uiName = `@${name}/ui`;
-  for (const folder of ['plugins', 'canvases', join('.github', 'workflows')]) await mkdir(join(dir, folder), { recursive: true });
+  for (const folder of ['plugins', CANVASES_DIR, join('.github', 'workflows')]) await mkdir(join(dir, folder), { recursive: true });
+  await writeTemplate(projectTemplateDir, dir, { __NAME__: name, __DESCRIPTION__: `Copilot canvases from ${repository}.` });
 
   const files = {
-    [CONFIG_FILE]: { name, owner: { name: owner }, repository, publishBranch: 'stable', sourceBranch: 'main', ui: uiName },
-    'package.json': {
-      name,
-      private: true,
-      type: 'module',
-      packageManager: 'pnpm@11.19.0',
-      engines: { node: '>=22.12.0' },
-      scripts: {
-        'new-canvas': 'canvas-kit new',
-        build: 'pnpm -r --filter "./canvases/*" build && canvas-kit build',
-        typecheck: 'pnpm -r typecheck',
-        test: 'pnpm -r test',
-        e2e: 'pnpm -r e2e',
-        check: 'pnpm build && pnpm typecheck && pnpm test',
-        release: 'canvas-kit release',
-      },
-      devDependencies: { '@rwoll/canvas-kit': `^${version}` },
-    },
+    [CONFIG_FILE]: { name, owner: { name: owner }, repository, publishBranch: 'stable', sourceBranch: 'main' },
     'pnpm-workspace.yaml': [
-      'packages:',
-      '  - ui',
-      '  - canvases/*',
+      '# pnpm settings for this project. It is a single package, so there is no',
+      '# packages list.',
       '',
       '# Never run dependency lifecycle scripts, and fail if a dependency needs one.',
       'ignoreScripts: true',
@@ -394,18 +345,23 @@ export async function initMarketplace(dir, options) {
       '',
       '```sh',
       'pnpm install',
-      'pnpm new-canvas release-board        # add a canvas under canvases/',
-      'pnpm --filter release-board dev      # preview it in a browser',
+      'pnpm new-canvas release-board        # add canvases/release-board/',
+      'pnpm dev                             # preview every canvas in a browser',
       'pnpm check                           # build, typecheck, and test',
       '```',
       '',
-      `Shared React components and the theme live in \`ui/\` (\`${uiName}\`); every new canvas uses them.`,
-      'Put content-only plugins (skills, agents, MCP servers) under `plugins/<name>/` with a',
-      '`plugin.json`. Every push to `main` publishes the marketplace to the `stable` branch.',
-      'Install it with:',
+      'This repository is one project: each folder in `canvases/` is a canvas with a',
+      '`canvas.ts` (state and actions) and an `App.tsx` (its React UI). Shared React',
+      'components and the theme live in `ui/`. Skills in `skills/<name>/SKILL.md` ship',
+      `with the canvases in the \`${name}\` plugin; \`vite.config.ts\` can split canvases into`,
+      'plugins of their own. Put other plugins (agents, MCP servers) under',
+      '`plugins/<name>/` with a `plugin.json`.',
+      '',
+      'Every push to `main` publishes the marketplace to the `stable` branch. Install it with:',
       '',
       '```sh',
       `copilot plugin marketplace add ${repository}#stable`,
+      `copilot plugin install ${name}@${name}`,
       '```',
       '',
     ],
@@ -414,7 +370,7 @@ export async function initMarketplace(dir, options) {
     const text = Array.isArray(content) ? content.join('\n') : `${JSON.stringify(content, null, 2)}\n`;
     await writeFile(join(dir, path), text);
   }
-  const ui = await createUiPackage(dir, uiName);
+  const ui = await addUi(dir);
   const canvas = options.canvas ? await newCanvas(dir, options.canvas, { idPrefix: options.idPrefix }) : undefined;
   return { dir, ui, canvas };
 }
@@ -434,19 +390,21 @@ async function readManifest(pluginDir, name) {
 }
 
 /**
- * Assemble the installable marketplace: content plugins from `plugins/`, built
- * canvases from `canvases/<name>/dist/plugin`, and a catalog from their manifests.
+ * Assemble the installable marketplace: content plugins from `plugins/`, the plugins
+ * `vite build` wrote to `dist/plugins/`, and a catalog from their manifests.
  */
 export async function buildMarketplace(dir) {
   const config = await loadConfig(dir);
   const outDir = join(dir, config.outDir);
   const sources = new Map();
   for (const name of await directories(join(dir, config.pluginsDir))) sources.set(name, join(dir, config.pluginsDir, name));
-  for (const name of await directories(join(dir, config.canvasesDir))) {
-    const built = join(dir, config.canvasesDir, name, 'dist', 'plugin');
-    if (!(await exists(built))) throw new CliError(`${config.canvasesDir}/${name} is not built; run its build first`);
-    if (sources.has(name)) throw new CliError(`"${name}" exists in both ${config.pluginsDir}/ and ${config.canvasesDir}/`);
-    sources.set(name, built);
+  const builtDir = join(dir, 'dist', 'plugins');
+  for (const name of await directories(builtDir)) {
+    if (sources.has(name)) throw new CliError(`"${name}" is both in ${config.pluginsDir}/ and built from canvases/; rename one`);
+    sources.set(name, join(builtDir, name));
+  }
+  if ((await directories(join(dir, CANVASES_DIR))).length > 0 && !(await exists(builtDir))) {
+    throw new CliError(`${CANVASES_DIR}/ is not built; run \`vite build\` (your build script) first`);
   }
 
   await rm(outDir, { recursive: true, force: true });
@@ -484,35 +442,47 @@ export async function buildMarketplace(dir) {
 /**
  * Run a canvas's due jobs for its saved documents, with no chat or agent open: every
  * job when `job` is undefined, or one job by name or ID.
- * `plugin` is a built plugin folder: a canvas package's `dist/plugin`, or an installed
- * plugin such as `~/.copilot/installed-plugins/<marketplace>/<plugin>`.
+ * `plugin` is a built plugin folder, such as `dist/plugins/<name>` or an installed
+ * plugin in `~/.copilot/installed-plugins/<marketplace>/<plugin>`; it defaults to every
+ * plugin in `dist/plugins`. `canvas` picks a canvas by folder name or canvas ID when
+ * there are several.
  */
 export async function runJob(dir, job, options = {}) {
-  const pluginDir = options.plugin
-    ? resolve(dir, options.plugin)
-    : (await exists(join(dir, 'dist', 'plugin', 'extensions')))
-      ? join(dir, 'dist', 'plugin')
-      : dir;
-  const extensions = join(pluginDir, 'extensions');
-  if (!(await exists(extensions))) {
-    throw new CliError(`${pluginDir} is not a built plugin; build the canvas first or pass --plugin <folder>`);
+  const pluginDirs = options.plugin ? [resolve(dir, options.plugin)] : (await directories(join(dir, 'dist', 'plugins'))).map(name => join(dir, 'dist', 'plugins', name));
+  if (pluginDirs.length === 0) throw new CliError(`no built plugins in ${join(dir, 'dist', 'plugins')}; build the project first or pass --plugin <folder>`);
+  // Each extension's canvas.mjs lists its canvases; one built before projects holds one canvas.
+  const found = [];
+  for (const pluginDir of pluginDirs) {
+    const extensions = join(pluginDir, 'extensions');
+    if (!(await exists(extensions))) {
+      if (options.plugin) throw new CliError(`${pluginDir} is not a built plugin with canvases; build it first or pass another --plugin <folder>`);
+      continue;
+    }
+    for (const extension of await directories(extensions)) {
+      const file = join(extensions, extension, 'canvas.mjs');
+      if (!(await exists(file))) continue;
+      const module = await import(pathToFileURL(file).href);
+      if (typeof module.runJob !== 'function') throw new CliError(`${file} has no runJob; rebuild it with the current canvas-kit`);
+      const canvases = Array.isArray(module.canvases)
+        ? module.canvases.map(entry => ({ name: entry.name, id: entry.canvas?.id }))
+        : [{ name: extension, id: module.default?.id, single: true }];
+      for (const canvas of canvases) found.push({ ...canvas, module, file });
+    }
   }
-  const all = await directories(extensions);
-  const names = [];
-  for (const name of all) if (await exists(join(extensions, name, 'canvas.mjs'))) names.push(name);
-  const name = options.canvas ?? (names.length === 1 ? names[0] : undefined);
-  if (!name) {
-    throw new CliError(
-      names.length === 0
-        ? `${pluginDir} has no canvas.mjs; rebuild it with the current canvas-kit`
-        : `${pluginDir} has several canvases (${names.join(', ')}); pass --canvas <name>`,
-    );
+  const names = found.map(canvas => canvas.name).join(', ');
+  if (found.length === 0) throw new CliError(`${pluginDirs.join(', ')} has no canvas.mjs; rebuild it with the current canvas-kit`);
+  let target;
+  if (options.canvas !== undefined) {
+    target = found.find(canvas => canvas.name === options.canvas || canvas.id === options.canvas);
+    if (!target) throw new CliError(`no canvas ${options.canvas}; the built canvases are ${names}`);
+  } else if (found.length === 1) {
+    target = found[0];
+  } else {
+    throw new CliError(`there are several canvases (${names}); pass --canvas <name>`);
   }
-  if (!names.includes(name)) throw new CliError(`${extensions}/${name}/canvas.mjs not found`);
-  const module = await import(pathToFileURL(join(extensions, name, 'canvas.mjs')).href);
-  if (typeof module.runJob !== 'function') throw new CliError(`${name}/canvas.mjs has no runJob; rebuild it with the current canvas-kit`);
+  const jobOptions = { key: options.key, force: options.force, dataRoot: options.dataRoot, log: options.log };
   try {
-    return await module.runJob(job, { key: options.key, force: options.force, dataRoot: options.dataRoot, log: options.log });
+    return await target.module.runJob(job, target.single ? jobOptions : { ...jobOptions, canvas: target.name });
   } catch (error) {
     // The canvas bundles its own copy of the kit, so check the error's shape rather than its class.
     if (error && typeof error.code === 'string' && typeof error.message === 'string') throw new CliError(error.message);

@@ -1,5 +1,5 @@
 {
-  "extends": "./tsconfig/canvas.json",
+  "extends": "./tsconfig/project.json",
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",
     "types": ["node"]

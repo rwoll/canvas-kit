@@ -12,7 +12,7 @@ export interface UseCanvas<C extends AnyCanvas> extends CanvasSnapshot<StateOf<C
 
 /**
  * Live canvas state and a typed action caller. Pass the canvas type with
- * `import type canvas from '../server/canvas.ts'` and `useCanvas<typeof canvas>()`.
+ * `import type canvas from './canvas.ts'` and `useCanvas<typeof canvas>()`.
  */
 export function useCanvas<C extends AnyCanvas>(): UseCanvas<C> {
   const client = getCanvasClient<C>();

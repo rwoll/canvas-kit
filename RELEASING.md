@@ -31,7 +31,8 @@ reusable [marketplace.yml](.github/workflows/marketplace.yml):
 ## Release to npm
 
 1. Bump `version` in `packages/canvas-kit/package.json` and
-   `packages/create-canvas/package.json`, and merge to `main`.
+   `packages/create-canvas/package.json`, move the Unreleased entries in
+   [CHANGELOG.md](CHANGELOG.md) under the new version and date, and merge to `main`.
 2. Tag the merged commit and push the tag: `git tag v0.2.0 && git push origin v0.2.0`.
    Only admins can create, move, or delete `v*` tags.
 3. [Release to npm](.github/workflows/release.yml) runs three jobs:

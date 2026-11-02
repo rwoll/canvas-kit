@@ -1,21 +1,21 @@
 #!/usr/bin/env node
 import { basename, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { CliError, addUiPackage, buildMarketplace, initMarketplace, kitVersion, newCanvas, release, runJob } from './lib.mjs';
+import { CliError, addUi, buildMarketplace, initMarketplace, kitVersion, newCanvas, release, runJob } from './lib.mjs';
 
 const USAGE = `Usage: canvas-kit <command> [options]
 
 Commands:
   init <dir> --repository <owner/name> [--name <name>] [--owner <name>] [--canvas <name>]
-      Create a plugin marketplace repository with a shared ui/ package, optionally with a first canvas.
-  new <name> [--title <text>] [--description <text>] [--id <canvas-id>] [--catalog] [--kit <range>]
-      Add a canvas package under canvases/. --catalog writes pnpm catalog: ranges;
-      --kit sets the @rwoll/canvas-kit range, for example workspace:*. New canvases use the
-      marketplace's shared UI package when marketplace.config.json names one.
-  ui <package-name> [--catalog]
-      Add a shared package of React components and a theme (ui/) that new canvases use.
+      Create a plugin marketplace repository: one canvas project with a shared ui/
+      folder, optionally with a first canvas.
+  new <name> [--title <text>] [--description <text>] [--id <canvas-id>]
+      Add a canvas to the project: canvases/<name>/ with canvas.ts, App.tsx, and tests.
+      It uses the project's shared ui/ folder when there is one.
+  ui
+      Add a shared ui/ folder of React components and a theme that new canvases use.
   build
-      Assemble dist/marketplace from plugins/ and the built canvases.
+      Assemble dist/marketplace from plugins/ and the plugins \`vite build\` wrote to dist/plugins/.
   release [--dry-run] [--skip-checks] [--footer <text>]... [--bundle <file> [--github-output]]
       Build the source branch in a clean worktree and publish it to the publish branch.
       With --bundle, write the prepared commit to a git bundle instead of pushing it;
@@ -23,10 +23,11 @@ Commands:
   run [job] [--plugin <folder>] [--canvas <name>] [--key <key>] [--force] [--data-root <folder>]
       Run a canvas's due jobs for its saved documents, with no chat open: every job,
       or one job by name or ID. For launchd, cron, or Task Scheduler. --plugin
-      defaults to ./dist/plugin.
+      defaults to every plugin in ./dist/plugins; --canvas picks the canvas by folder
+      name or ID when there are several.
 
 Options:
-  --cwd <dir>     Marketplace folder (default: current folder)
+  --cwd <dir>     Project folder (default: current folder)
   -h, --help      Show this help
   -v, --version   Show the canvas-kit version
 
@@ -43,8 +44,6 @@ async function main(argv) {
       title: { type: 'string' },
       description: { type: 'string' },
       id: { type: 'string' },
-      catalog: { type: 'boolean' },
-      kit: { type: 'string' },
       name: { type: 'string' },
       owner: { type: 'string' },
       repository: { type: 'string' },
@@ -74,31 +73,22 @@ async function main(argv) {
       const name = values.name ?? basename(folder);
       const owner = values.owner ?? values.repository.split('/')[0];
       const { canvas } = await initMarketplace(folder, { name, owner, repository: values.repository, canvas: values.canvas });
-      console.log(`Created ${name} in ${folder}${canvas ? ` with the ${canvas.name} canvas` : ''}.\n\nNext:\n  cd ${target}\n  pnpm install\n  pnpm check`);
+      console.log(
+        `Created ${name} in ${folder}${canvas ? ` with the ${canvas.name} canvas` : ''}.\n\nNext:\n  cd ${target}\n  pnpm install\n` +
+          (canvas ? '  pnpm dev\n  pnpm check' : '  pnpm new-canvas <name>\n  pnpm dev'),
+      );
       return;
     }
     case 'new': {
       const [name] = rest;
       if (!name) throw new CliError('new needs a canvas name, for example `canvas-kit new release-board`');
-      const canvas = await newCanvas(dir, name, {
-        title: values.title,
-        description: values.description,
-        id: values.id,
-        dependencies: values.catalog ? 'catalog' : 'ranges',
-        kitRange: values.kit,
-      });
-      console.log(`Created ${canvas.dir} (canvas id "${canvas.id}"). Run your package manager's install, then its dev script.`);
+      const canvas = await newCanvas(dir, name, { title: values.title, description: values.description, id: values.id });
+      console.log(`Created ${canvas.dir} (canvas id "${canvas.id}"). Run your dev script to preview it.`);
       return;
     }
     case 'ui': {
-      const [name] = rest;
-      if (!name) throw new CliError('ui needs a package name, for example `canvas-kit ui @acme/ui`');
-      const ui = await addUiPackage(dir, name, { dependencies: values.catalog ? 'catalog' : 'ranges' });
-      console.log(
-        `Created ${ui.dir} (${ui.name}) and recorded it in marketplace.config.json.` +
-          (ui.workspaceUpdated ? ' Added it to pnpm-workspace.yaml.' : ' Add its folder to your workspace packages.') +
-          `\nImport ${ui.name}/theme.css in each canvas's src/main.tsx; new canvases do this for you.`,
-      );
+      const ui = await addUi(dir);
+      console.log(`Created ${ui.dir}. Import its components from '../../ui' and its theme.css in each canvas's App.tsx; new canvases do this for you.`);
       return;
     }
     case 'build': {

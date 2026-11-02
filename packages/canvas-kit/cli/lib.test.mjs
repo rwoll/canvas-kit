@@ -1,10 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ACTIONS, CliError, GH_ACTIONS_LOCK, VERSIONS, addUiPackage, buildMarketplace, initMarketplace, kitVersion, newCanvas, release, runJob } from './lib.mjs';
+import { ACTIONS, CliError, GH_ACTIONS_LOCK, VERSIONS, addUi, buildMarketplace, initMarketplace, kitVersion, newCanvas, release, runJob } from './lib.mjs';
 
 const workspace = fileURLToPath(new URL('../../../pnpm-workspace.yaml', import.meta.url));
 const json = async path => JSON.parse(await readFile(path, 'utf8'));
@@ -20,49 +20,36 @@ afterEach(async () => {
 
 const config = { name: 'demo', owner: { name: 'octo' }, repository: 'octo/demo' };
 
-describe('canvas-kit new', () => {
-  it('writes a canvas with published ranges or catalog ranges', async () => {
+describe('canvas-kit new and ui', () => {
+  it('adds a canvas folder to a project', async () => {
     const canvas = await newCanvas(dir, 'release-board', { title: "Octo's board", idPrefix: 'octo' });
-    expect(canvas).toMatchObject({ id: 'octo-release-board', title: "Octo's board" });
-    const pkg = await json(join(dir, 'canvases', 'release-board', 'package.json'));
-    expect(pkg.name).toBe('release-board');
-    expect(pkg.dependencies['@rwoll/canvas-kit']).toBe(`^${await kitVersion()}`);
-    expect(pkg.devDependencies['@playwright/test']).toBe(VERSIONS['@playwright/test']);
-    const source = await readFile(join(dir, 'canvases', 'release-board', 'server', 'canvas.ts'), 'utf8');
+    expect(canvas).toMatchObject({ id: 'octo-release-board', title: "Octo's board", ui: false });
+    const folder = join(dir, 'canvases', 'release-board');
+    expect((await readdir(folder)).sort()).toEqual(['App.css', 'App.tsx', 'canvas.spec.ts', 'canvas.test.ts', 'canvas.ts']);
+    const source = await readFile(join(folder, 'canvas.ts'), 'utf8');
     expect(source).toContain("id: 'octo-release-board'");
     expect(source).toContain("title: 'Octo\\'s board'");
+    expect(await readFile(join(folder, 'App.tsx'), 'utf8')).toContain("import type canvas from './canvas.ts'");
 
-    await newCanvas(dir, 'notes', { dependencies: 'catalog', kitRange: 'workspace:*' });
-    const catalog = await json(join(dir, 'canvases', 'notes', 'package.json'));
-    expect(catalog.dependencies).toEqual({ '@rwoll/canvas-kit': 'workspace:*', react: 'catalog:', 'react-dom': 'catalog:' });
-
-    await expect(newCanvas(dir, 'notes')).rejects.toThrow(/already exists/);
+    await expect(newCanvas(dir, 'release-board')).rejects.toThrow(/already exists/);
     await expect(newCanvas(dir, 'Bad_Name')).rejects.toBeInstanceOf(CliError);
   });
 
-  it('wires new canvases to the marketplace\'s shared UI package', async () => {
-    await writeFile(join(dir, 'marketplace.config.json'), JSON.stringify(config));
-    await writeFile(join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - canvases/*\n');
-    const ui = await addUiPackage(dir, '@octo/ui');
-    expect(ui).toMatchObject({ name: '@octo/ui', workspaceUpdated: true });
-    expect(await readFile(join(dir, 'pnpm-workspace.yaml'), 'utf8')).toBe('packages:\n  - ui\n  - canvases/*\n');
-    expect((await json(join(dir, 'marketplace.config.json'))).ui).toBe('@octo/ui');
-    const uiPkg = await json(join(dir, 'ui', 'package.json'));
-    expect(uiPkg).toMatchObject({ name: '@octo/ui', private: true, exports: { '.': './src/index.ts', './theme.css': './theme.css' } });
-    expect(uiPkg.devDependencies.react).toBe(VERSIONS.react);
-    await expect(addUiPackage(dir, '@octo/other')).rejects.toThrow(/already names/);
+  it("uses the project's shared ui/ folder", async () => {
+    const ui = await addUi(dir);
+    expect((await readdir(ui.dir)).sort()).toEqual(['Checklist.tsx', 'Header.tsx', 'Markdown.tsx', 'README.md', 'TextButton.tsx', 'index.ts', 'theme.css']);
+    await expect(addUi(dir)).rejects.toThrow(/already exists/);
 
     const canvas = await newCanvas(dir, 'board');
-    expect(canvas.ui).toBe('@octo/ui');
-    expect((await json(join(dir, 'canvases', 'board', 'package.json'))).dependencies['@octo/ui']).toBe('workspace:*');
-    expect(await readFile(join(dir, 'canvases', 'board', 'src', 'main.tsx'), 'utf8')).toContain("import '@octo/ui/theme.css'\n");
-    const app = await readFile(join(dir, 'canvases', 'board', 'src', 'App.tsx'), 'utf8');
-    expect(app).toContain("import { Header } from '@octo/ui'");
+    expect(canvas.ui).toBe(true);
+    const app = await readFile(join(dir, 'canvases', 'board', 'App.tsx'), 'utf8');
+    expect(app).toContain("import { Header } from '../../ui'\n");
+    expect(app).toContain("import '../../ui/theme.css'\n");
     expect(app).toContain('<Header title={TITLE} />');
 
     // A canvas can opt out.
-    await newCanvas(dir, 'plain', { ui: null });
-    expect((await json(join(dir, 'canvases', 'plain', 'package.json'))).dependencies['@octo/ui']).toBeUndefined();
+    await newCanvas(dir, 'plain', { ui: false });
+    expect(await readFile(join(dir, 'canvases', 'plain', 'App.tsx'), 'utf8')).not.toContain('../../ui');
   });
 
   it('keeps template versions in step with the workspace catalog', async () => {
@@ -74,32 +61,43 @@ describe('canvas-kit new', () => {
 });
 
 describe('canvas-kit init and build', () => {
-  it('creates a marketplace and assembles plugins and built canvases', async () => {
+  it('creates a one-project marketplace and assembles plugins and built canvases', async () => {
     const root = join(dir, 'market');
     await initMarketplace(root, { name: 'demo', owner: 'octo', repository: 'octo/demo', canvas: 'board' });
-    expect(await json(join(root, 'marketplace.config.json'))).toMatchObject({ ...config, ui: '@demo/ui' });
-    expect(await readFile(join(root, 'pnpm-workspace.yaml'), 'utf8')).toContain('  - ui\n  - canvases/*');
-    expect((await json(join(root, 'canvases', 'board', 'package.json'))).dependencies['@demo/ui']).toBe('workspace:*');
+    expect(await json(join(root, 'marketplace.config.json'))).toEqual({ ...config, publishBranch: 'stable', sourceBranch: 'main' });
+    const pkg = await json(join(root, 'package.json'));
+    expect(pkg).toMatchObject({ name: 'demo', version: '0.1.0', description: 'Copilot canvases from octo/demo.', scripts: { build: 'vite build && canvas-kit build' } });
+    expect(pkg.dependencies['@rwoll/canvas-kit']).toBe(`^${await kitVersion()}`);
+    expect(pkg.devDependencies.vite).toBe(VERSIONS.vite);
+    for (const file of ['vite.config.ts', 'tsconfig.json', 'playwright.config.ts', 'ui/index.ts', 'canvases/board/canvas.ts', 'canvases/board/App.tsx']) {
+      expect(await readFile(join(root, file), 'utf8'), file).not.toBe('');
+    }
+    expect(await readFile(join(root, 'canvases', 'board', 'App.tsx'), 'utf8')).toContain("from '../../ui'");
+    const yaml = await readFile(join(root, 'pnpm-workspace.yaml'), 'utf8');
+    expect(yaml).not.toMatch(/^packages:/m);
+    expect(yaml).toMatch(/^minimumReleaseAge: 10080$/m);
+    expect(yaml).toContain('ignoreScripts: true');
     const publish = await readFile(join(root, '.github', 'workflows', 'publish.yml'), 'utf8');
     expect(publish).toContain(`/.github/workflows/marketplace.yml@v${await kitVersion()}`);
     expect(publish).not.toContain('@main');
     expect(await readFile(join(root, '.github', 'workflows', 'check.yml'), 'utf8')).toContain('contents: read');
-    expect(await readFile(join(root, 'pnpm-workspace.yaml'), 'utf8')).toMatch(/^minimumReleaseAge: 10080$/m);
-    expect(await readFile(join(root, 'pnpm-workspace.yaml'), 'utf8')).toContain('ignoreScripts: true');
     await expect(initMarketplace(root, { name: 'demo', owner: 'octo', repository: 'octo/demo' })).rejects.toThrow(/not empty/);
 
-    await expect(buildMarketplace(root)).rejects.toThrow(/canvases\/board is not built/);
-    await mkdir(join(root, 'canvases', 'board', 'dist', 'plugin', '.plugin'), { recursive: true });
-    await writeFile(join(root, 'canvases', 'board', 'dist', 'plugin', '.plugin', 'plugin.json'), JSON.stringify({ name: 'board', version: '0.1.0', description: 'Board' }));
-    await mkdir(join(root, 'plugins', 'skills'), { recursive: true });
-    await writeFile(join(root, 'plugins', 'skills', 'plugin.json'), JSON.stringify({ name: 'skills', version: '1.0.0', description: 'Skills' }));
+    await expect(buildMarketplace(root)).rejects.toThrow(/canvases\/ is not built/);
+    // What `vite build` writes for the project.
+    await mkdir(join(root, 'dist', 'plugins', 'demo', '.plugin'), { recursive: true });
+    await writeFile(join(root, 'dist', 'plugins', 'demo', '.plugin', 'plugin.json'), JSON.stringify({ name: 'demo', version: '0.1.0', description: 'Demo' }));
+    await mkdir(join(root, 'plugins', 'mcp'), { recursive: true });
+    await writeFile(join(root, 'plugins', 'mcp', 'plugin.json'), JSON.stringify({ name: 'mcp', version: '1.0.0', description: 'MCP' }));
 
     const { catalog, outDir } = await buildMarketplace(root);
-    expect(catalog.plugins.map(plugin => `${plugin.name}@${plugin.version}`)).toEqual(['board@0.1.0', 'skills@1.0.0']);
+    expect(catalog.plugins.map(plugin => `${plugin.name}@${plugin.version}`)).toEqual(['demo@0.1.0', 'mcp@1.0.0']);
     expect(await json(join(outDir, '.github', 'plugin', 'marketplace.json'))).toEqual(catalog);
 
-    await writeFile(join(root, 'plugins', 'skills', 'plugin.json'), JSON.stringify({ name: 'other', version: '1.0.0', description: 'Skills' }));
+    await writeFile(join(root, 'plugins', 'mcp', 'plugin.json'), JSON.stringify({ name: 'other', version: '1.0.0', description: 'MCP' }));
     await expect(buildMarketplace(root)).rejects.toThrow(/is named "other"/);
+    await mkdir(join(root, 'plugins', 'demo'), { recursive: true });
+    await expect(buildMarketplace(root)).rejects.toThrow(/"demo" is both in plugins\/ and built from canvases\//);
   });
 });
 
@@ -151,32 +149,40 @@ describe('scaffolded workflows', () => {
 });
 
 describe('canvas-kit run', () => {
-  const stub = async (plugin, name) => {
-    const folder = join(dir, plugin, 'extensions', name);
-    await mkdir(folder, { recursive: true });
+  // A plugin's canvas.mjs, as `vite build` writes it: its canvases and a runJob that picks one.
+  const plugin = async (folder, names) => {
+    const extension = join(dir, folder, 'extensions', 'ext');
+    await mkdir(extension, { recursive: true });
     await writeFile(
-      join(folder, 'canvas.mjs'),
-      `export function runJob(job, options) {
-        if (job === 'missing') throw Object.assign(new Error('${name} has no job missing'), { code: 'not_found' });
-        return [{ job, key: options.key ?? 'saved', ran: !!options.force, canvas: '${name}', dataRoot: options.dataRoot }];
+      join(extension, 'canvas.mjs'),
+      `export const canvases = ${JSON.stringify(names.map(name => ({ name, canvas: { id: `octo-${name}` } })))};
+      export function runJob(job, options) {
+        if (job === 'missing') throw Object.assign(new Error(options.canvas + ' has no job missing'), { code: 'not_found' });
+        return [{ job, key: options.key ?? 'saved', ran: !!options.force, canvas: options.canvas, dataRoot: options.dataRoot }];
       }`,
     );
   };
 
-  it('loads the built canvas and runs the job', async () => {
-    await stub('dist/plugin', 'board');
+  it('finds the canvas in the built plugins and runs the job', async () => {
+    await plugin('dist/plugins/a', ['board']);
     expect(await runJob(dir, 'refresh', { force: true, dataRoot: '/data' })).toEqual([
       { job: 'refresh', key: 'saved', ran: true, canvas: 'board', dataRoot: '/data' },
     ]);
     await expect(runJob(dir, 'missing')).rejects.toThrow(new CliError('board has no job missing'));
+
+    await plugin('dist/plugins/b', ['notes', 'summary']);
+    await expect(runJob(dir, 'refresh')).rejects.toThrow(/several canvases \(board, notes, summary\); pass --canvas/);
+    expect(await runJob(dir, 'refresh', { canvas: 'octo-summary', key: 'k' })).toMatchObject([{ canvas: 'summary', key: 'k' }]);
+    expect(await runJob(dir, 'refresh', { plugin: 'dist/plugins/a' })).toMatchObject([{ canvas: 'board' }]);
+    await expect(runJob(dir, 'refresh', { canvas: 'nope' })).rejects.toThrow(/no canvas nope; the built canvases are board, notes, summary/);
+    await expect(runJob(dir, 'refresh', { plugin: 'nowhere' })).rejects.toThrow(/is not a built plugin/);
   });
 
-  it('asks which canvas when a plugin has several', async () => {
-    await stub('plugin', 'a');
-    await stub('plugin', 'b');
-    await expect(runJob(dir, 'refresh', { plugin: 'plugin' })).rejects.toThrow(/several canvases \(a, b\); pass --canvas/);
-    expect(await runJob(dir, 'refresh', { plugin: 'plugin', canvas: 'b', key: 'k' })).toMatchObject([{ canvas: 'b', key: 'k' }]);
-    await expect(runJob(dir, 'refresh', { plugin: 'nowhere' })).rejects.toThrow(/is not a built plugin/);
+  it('runs plugins built with one canvas per plugin', async () => {
+    const extension = join(dir, 'old', 'extensions', 'board');
+    await mkdir(extension, { recursive: true });
+    await writeFile(join(extension, 'canvas.mjs'), 'export default { id: "octo-board" };\nexport function runJob(job, options) { return [{ job, canvas: options.canvas ?? "only" }]; }');
+    expect(await runJob(dir, 'refresh', { plugin: 'old', canvas: 'board' })).toEqual([{ job: 'refresh', canvas: 'only' }]);
   });
 });
 

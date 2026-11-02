@@ -23,8 +23,10 @@ import { escapeHtml, injectReleaseFooter, insertBefore, type ReleaseInfo } from 
 import { StateStore, canvasDataDir, type JobRecord, type StateStoreOptions } from './storage.ts';
 
 export interface CanvasHostOptions {
-  /** Folder with the built UI (`index.html` and assets). Omit to serve a bare page, as in tests. */
+  /** Folder with the built UI (its page and assets). Omit to serve a bare page, as in tests. */
   uiDir?: string;
+  /** The canvas's page in `uiDir`. Defaults to `index.html`; a project's build writes `<canvas>.html`. */
+  indexFile?: string;
   /** Parent of the per-canvas data folders. Defaults to `<copilot-home>/extension-data`. */
   dataRoot?: string;
   /** Build shown in the page footer and sent to the UI. */
@@ -207,6 +209,12 @@ export function renderBootstrap(bootstrap: CanvasBootstrap): string {
 
 export function injectBootstrap(html: string, bootstrap: CanvasBootstrap): string {
   return insertBefore(html, /<\/head>/, renderBootstrap(bootstrap), 'start');
+}
+
+/** Give a page the canvas's title, unless it has its own. */
+export function injectTitle(html: string, title: string): string {
+  if (/<title[\s>]/i.test(html)) return html;
+  return insertBefore(html, /<\/head>/, `<title>${escapeHtml(title)}</title>`, 'start');
 }
 
 function sendJson(response: ServerResponse, status: number, body: unknown) {
@@ -1270,7 +1278,7 @@ export class CanvasHost {
       return;
     }
     if (path === '' || path === 'index.html') {
-      let html = injectBootstrap(await this.#loadIndex(), this.#bootstrap(instance, `/c/${instance.key}/`));
+      let html = injectTitle(injectBootstrap(await this.#loadIndex(), this.#bootstrap(instance, `/c/${instance.key}/`)), this.canvas.title);
       const { release } = this.#options;
       if (release && this.canvas.versionFooter) html = injectReleaseFooter(html, release);
       response.writeHead(200, { 'Content-Type': CONTENT_TYPES['.html']! });
@@ -1287,7 +1295,7 @@ export class CanvasHost {
         `<!doctype html>\n<html lang="en">\n<head><meta charset="utf-8"><title>${escapeHtml(this.canvas.title)}</title></head>\n<body><div id="root"></div></body>\n</html>\n`,
       );
     }
-    this.#indexHtml ??= readFile(join(uiDir, 'index.html'), 'utf8').catch(error => {
+    this.#indexHtml ??= readFile(join(uiDir, this.#options.indexFile ?? 'index.html'), 'utf8').catch(error => {
       this.#indexHtml = undefined;
       throw new CanvasKitError('not_found', `The canvas UI is missing: ${errorMessage(error)}`, 500);
     });

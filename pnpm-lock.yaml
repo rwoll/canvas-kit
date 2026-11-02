@@ -52,118 +52,32 @@ overrides:
 importers:
 
   .:
-    devDependencies:
-      '@playwright/test':
-        specifier: 'catalog:'
-        version: 1.64.1
+    dependencies:
       '@rwoll/canvas-kit':
         specifier: workspace:*
         version: link:packages/canvas-kit
+      react:
+        specifier: 'catalog:'
+        version: 19.3.1
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.3.1(react@19.3.1)
+    devDependencies:
+      '@playwright/test':
+        specifier: 'catalog:'
+        version: 1.64.1
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.3.0(@types/react@19.3.0)
       oxlint:
         specifier: 'catalog:'
         version: 1.89.0
-
-  canvases/flaky-tests:
-    dependencies:
-      '@examples/ui':
-        specifier: workspace:*
-        version: link:../../ui
-      '@rwoll/canvas-kit':
-        specifier: workspace:*
-        version: link:../../packages/canvas-kit
-      react:
-        specifier: 'catalog:'
-        version: 19.3.1
-      react-dom:
-        specifier: 'catalog:'
-        version: 19.3.1(react@19.3.1)
-    devDependencies:
-      '@playwright/test':
-        specifier: 'catalog:'
-        version: 1.64.1
-      '@types/node':
-        specifier: 'catalog:'
-        version: 24.19.2
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.3.0
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.3.0(@types/react@19.3.0)
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-      vite:
-        specifier: 'catalog:'
-        version: 8.3.5(@types/node@24.19.2)
-      vitest:
-        specifier: 'catalog:'
-        version: 5.0.5(@types/node@24.19.2)(vite@8.3.5(@types/node@24.19.2))
-
-  canvases/release-board:
-    dependencies:
-      '@examples/ui':
-        specifier: workspace:*
-        version: link:../../ui
-      '@rwoll/canvas-kit':
-        specifier: workspace:*
-        version: link:../../packages/canvas-kit
-      react:
-        specifier: 'catalog:'
-        version: 19.3.1
-      react-dom:
-        specifier: 'catalog:'
-        version: 19.3.1(react@19.3.1)
-    devDependencies:
-      '@playwright/test':
-        specifier: 'catalog:'
-        version: 1.64.1
-      '@types/node':
-        specifier: 'catalog:'
-        version: 24.19.2
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.3.0
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.3.0(@types/react@19.3.0)
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-      vite:
-        specifier: 'catalog:'
-        version: 8.3.5(@types/node@24.19.2)
-      vitest:
-        specifier: 'catalog:'
-        version: 5.0.5(@types/node@24.19.2)(vite@8.3.5(@types/node@24.19.2))
-
-  canvases/session-summary:
-    dependencies:
-      '@examples/ui':
-        specifier: workspace:*
-        version: link:../../ui
-      '@rwoll/canvas-kit':
-        specifier: workspace:*
-        version: link:../../packages/canvas-kit
-      react:
-        specifier: 'catalog:'
-        version: 19.3.1
-      react-dom:
-        specifier: 'catalog:'
-        version: 19.3.1(react@19.3.1)
-    devDependencies:
-      '@playwright/test':
-        specifier: 'catalog:'
-        version: 1.64.1
-      '@types/node':
-        specifier: 'catalog:'
-        version: 24.19.2
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.3.0
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.3.0(@types/react@19.3.0)
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
@@ -217,21 +131,6 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 5.0.5(@types/node@24.19.2)(vite@8.3.5(@types/node@24.19.2))
-
-  ui:
-    devDependencies:
-      '@rwoll/canvas-kit':
-        specifier: workspace:*
-        version: link:../packages/canvas-kit
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.3.0
-      react:
-        specifier: 'catalog:'
-        version: 19.3.1
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
 
 packages:
 

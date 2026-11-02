@@ -39,7 +39,7 @@ try {
   if (!repository) throw new CliError('pass --repository owner/name');
   const canvas = values.canvas ?? (await ask('First canvas name', 'hello-canvas'));
   await initMarketplace(dir, { name, owner: repository.split('/')[0], repository, canvas });
-  console.log(`\nCreated ${name} in ${dir}.\n\nNext:\n  cd ${folder}\n  pnpm install\n  pnpm --filter ${canvas} dev\n  pnpm check\n\nPush to ${repository} and every push to main publishes the marketplace to its stable branch.`);
+  console.log(`\nCreated ${name} in ${dir} with the ${canvas} canvas in canvases/${canvas}/.\n\nNext:\n  cd ${folder}\n  pnpm install\n  pnpm dev\n  pnpm check\n\nPush to ${repository} and every push to main publishes the marketplace to its stable branch.`);
 } catch (error) {
   if (error instanceof CliError) {
     console.error(`create-canvas: ${error.message}`);

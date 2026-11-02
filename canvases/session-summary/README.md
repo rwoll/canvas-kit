@@ -21,18 +21,20 @@ Canvas ID: `canvas-kit-session-summary`. Plugin name: `session-summary`.
 - Each chat has its own summary (`persist.key` is `ctx.sessionId`), saved
   privately under `<copilot-home>/extension-data/canvas-kit-session-summary/`.
 
-Layout:
+Files:
 
-- `server/canvas.ts`: the state, the agent and UI actions, and the refresh job (Node.js).
-- `src/`: the React UI. It uses `import type` only from `server/`.
-- `server/*.test.ts`, `src/*.test.ts`: unit tests (Vitest).
-- `e2e/*.spec.ts`: browser tests against the built canvas (Playwright).
+- `canvas.ts`: the state, the agent and UI actions, and the refresh job (Node.js).
+- `App.tsx`, `App.css`, `references.ts`: the React UI. It uses `import type` only from `canvas.ts`.
+- `*.test.ts`: unit tests (Vitest). `*.spec.ts`: browser tests against the built plugin (Playwright).
+
+It is built as its own plugin, `session-summary`, by the `plugins` list in this
+repository's [`vite.config.ts`](../../vite.config.ts), so it can be installed without the
+example canvases. From the repository root:
 
 ```sh
-pnpm --filter session-summary dev     # UI with live canvas logic in a browser
-pnpm --filter session-summary test    # unit tests
-pnpm --filter session-summary build   # installable plugin in dist/plugin
-pnpm --filter session-summary e2e     # browser tests; needs the build and `playwright install chromium`
+pnpm dev     # every canvas in a browser; this one at /session-summary/
+pnpm check   # build, typecheck, lint, and unit tests
+pnpm e2e     # browser tests; needs the build and `pnpm playwright:install`
 ```
 
 See the [canvas-kit guide](https://github.com/rwoll/canvas-kit/tree/main/packages/canvas-kit#readme) for the API.

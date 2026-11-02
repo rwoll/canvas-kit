@@ -1,6 +1,6 @@
 import { defineConfig, devices, test as base, type Page, type PlaywrightTestConfig } from '@playwright/test';
-import { existsSync, readFileSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
 import type { AgentMessage, AnyCanvas, JobName, StateOf } from './define.ts';
 import type { JobOutcome, RunJobOptions } from './server/host.ts';
 import type { ReleaseInfo } from './server/release.ts';
@@ -9,14 +9,18 @@ import { createTestCanvas, type HarnessAction, type HarnessInput, type HarnessRe
 
 export interface CanvasTestOptions {
   /**
-   * Folder with the built UI. Defaults to `dist/plugin/extensions/<name>/ui` in the
-   * current folder, where `<name>` is the current folder's name, which is what
-   * `vite build` writes for a canvas package.
+   * The canvas's folder name under `canvases/`. Defaults to the folder of the spec
+   * file, or the nearest folder above it with a `canvas.ts`.
+   */
+  name?: string;
+  /**
+   * Folder with the built UI. Defaults to the one in `dist/plugins/` that has the
+   * canvas's page, which is what `vite build` writes.
    */
   uiDir?: string;
   /**
    * Release shown in the version footer. Defaults to an unpublished build of the
-   * package in the current folder, so screenshots stay stable.
+   * plugin the canvas is built into, so screenshots stay stable.
    */
   release?: ReleaseInfo;
   /** Clock for actions and jobs (`ctx.now()`), to test time-based jobs. Defaults to `Date.now`. */
@@ -75,24 +79,18 @@ const DEFAULT_INSTANCE = 'test';
  * ```
  */
 export function canvasTest<C extends AnyCanvas>(canvas: C, options: CanvasTestOptions = {}) {
-  const uiDir = resolve(options.uiDir ?? join('dist', 'plugin', 'extensions', basename(process.cwd()), 'ui'));
-  const assertBuilt = () => {
-    if (!existsSync(join(uiDir, 'index.html'))) {
-      throw new Error(`No built canvas UI in ${uiDir}. Build the canvas first (for example \`pnpm build\`), or pass uiDir to canvasTest().`);
-    }
-  };
-  const release = options.release ?? localRelease();
-
   return base.extend<CanvasFixtures<C> & { _canvasState: { messages: AgentMessage[]; failures: Error[]; lastInstance: string } }>({
     _canvasState: async ({}, use) => {
       await use({ messages: [], failures: [], lastInstance: DEFAULT_INSTANCE });
     },
 
-    canvasHarness: async ({ _canvasState }, use) => {
-      assertBuilt();
+    canvasHarness: async ({ _canvasState }, use, testInfo) => {
+      const name = options.name ?? canvasFolder(testInfo.file);
+      const built = findBuiltPage(name, options.uiDir);
       const harness = await createTestCanvas(canvas, {
-        uiDir,
-        release,
+        uiDir: built.uiDir,
+        indexFile: built.page,
+        release: options.release ?? built.release,
         now: options.now,
         sendToAgent: async message => {
           const failure = _canvasState.failures.shift();
@@ -155,25 +153,55 @@ export function canvasTest<C extends AnyCanvas>(canvas: C, options: CanvasTestOp
   });
 }
 
-/** The footer of an unpublished build of the canvas package in the current folder. */
-function localRelease(): ReleaseInfo {
-  const name = basename(process.cwd());
+/** The canvas folder a spec belongs to: the nearest folder at or above it with a `canvas.ts`. */
+function canvasFolder(file: string): string {
+  for (let dir = dirname(file); dir !== dirname(dir); dir = dirname(dir)) {
+    if (existsSync(join(dir, 'canvas.ts'))) return basename(dir);
+  }
+  throw new Error(`${file} is not in a canvas folder (one with a canvas.ts); pass name to canvasTest().`);
+}
+
+/** The built page for a canvas, and the unpublished release of the plugin it is in. */
+function findBuiltPage(name: string, uiDir?: string): { uiDir: string; page: string; release: ReleaseInfo } {
+  const page = `${name}.html`;
+  const candidates: { uiDir: string; plugin: string }[] = [];
+  if (uiDir) {
+    candidates.push({ uiDir: resolve(uiDir), plugin: resolve(uiDir, '..', '..', '..') });
+  } else {
+    const plugins = resolve('dist', 'plugins');
+    for (const plugin of existsSync(plugins) ? readdirSync(plugins) : []) {
+      const extensions = join(plugins, plugin, 'extensions');
+      for (const extension of existsSync(extensions) ? readdirSync(extensions) : []) {
+        candidates.push({ uiDir: join(extensions, extension, 'ui'), plugin: join(plugins, plugin) });
+      }
+    }
+  }
+  const found = candidates.find(candidate => existsSync(join(candidate.uiDir, page)));
+  if (!found) {
+    throw new Error(`No built page for ${name} (${page}) in ${uiDir ? resolve(uiDir) : resolve('dist', 'plugins')}. Build the project first (for example \`pnpm build\`).`);
+  }
+  return { uiDir: found.uiDir, page, release: localRelease(found.plugin) };
+}
+
+/** The footer of an unpublished build of a built plugin. */
+function localRelease(pluginDir: string): ReleaseInfo {
   try {
-    const { version } = JSON.parse(readFileSync('package.json', 'utf8')) as { version?: string };
-    return { name, version: version ?? '0.0.0', channel: 'local' };
+    const { name, version } = JSON.parse(readFileSync(join(pluginDir, '.plugin', 'plugin.json'), 'utf8')) as { name?: string; version?: string };
+    return { name: name ?? basename(pluginDir), version: version ?? '0.0.0', channel: 'local' };
   } catch {
-    return { name, version: '0.0.0', channel: 'local' };
+    return { name: basename(pluginDir), version: '0.0.0', channel: 'local' };
   }
 }
 
 /**
- * Playwright config for canvas tests: specs in `e2e/`, run in light, dark, and
- * high-contrast Chromium. Pass overrides as you would to `defineConfig`.
+ * Playwright config for canvas tests: `*.spec.ts` files under `canvases/`, run in
+ * light, dark, and high-contrast Chromium. Pass overrides as you would to `defineConfig`.
  */
 export function defineCanvasConfig(config: PlaywrightTestConfig = {}): PlaywrightTestConfig {
   const chrome = devices['Desktop Chrome'];
   return defineConfig({
-    testDir: 'e2e',
+    testDir: 'canvases',
+    testMatch: '**/*.spec.ts',
     fullyParallel: true,
     forbidOnly: Boolean(process.env.CI),
     retries: process.env.CI ? 1 : 0,
