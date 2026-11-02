@@ -1,7 +1,7 @@
-import { a as CanvasKitError, i as loadRelease, o as errorMessage, r as CanvasHost, t as canvas_entry_default } from "./chunks/canvas-entry-BpGJms1t.mjs";
+import { a as CanvasKitError, i as loadRelease, o as errorMessage, r as CanvasHost, t as canvases } from "./chunks/session-summary-CI7vaE2d.mjs";
 import { CanvasError, createCanvas, joinSession } from "@github/copilot-sdk/extension";
 import { fileURLToPath } from "node:url";
-//#region ../../packages/canvas-kit/dist/extension.js
+//#region packages/canvas-kit/dist/extension.js
 var toPath = (value) => typeof value === "string" ? value : fileURLToPath(value);
 function toCanvasError(error) {
 	if (error instanceof CanvasError) return error;
@@ -12,10 +12,20 @@ var guard = (run) => Promise.resolve().then(run).catch((error) => {
 	throw toCanvasError(error);
 });
 /**
-* Register a canvas with the current Copilot session. The kit's Vite build
-* generates the extension entry that calls this; canvases do not call it directly.
+* Register a plugin's canvases with the current Copilot session, in one process.
+* The kit's Vite build generates the extension entry that calls this; canvases do
+* not call it directly.
 */
-async function runCanvasExtension(canvas, options) {
+async function runCanvasExtension(canvases, options) {
+	const entries = (Array.isArray(canvases) ? canvases : [canvases]).map((entry) => "kind" in entry ? {
+		canvas: entry,
+		page: void 0
+	} : entry);
+	const ids = /* @__PURE__ */ new Set();
+	for (const { canvas } of entries) {
+		if (ids.has(canvas.id)) throw new Error(`Two canvases in ${options.plugin.name} have the ID ${canvas.id}`);
+		ids.add(canvas.id);
+	}
 	let session;
 	const log = (message, level) => {
 		if (!session) return;
@@ -23,40 +33,45 @@ async function runCanvasExtension(canvas, options) {
 	};
 	const { release, warning } = await loadRelease(toPath(options.releaseFile), options.plugin);
 	let joined;
-	const host = new CanvasHost(canvas, {
+	const sessionReady = new Promise((resolve) => {
+		joined = resolve;
+	});
+	const hosts = entries.map(({ canvas, page }) => new CanvasHost(canvas, {
 		uiDir: toPath(options.uiDir),
+		...page && { indexFile: page },
 		release,
 		log,
-		session: new Promise((resolve) => {
-			joined = resolve;
-		}),
+		session: sessionReady,
 		sendToAgent: async (message) => {
 			if (!session) throw new Error("The canvas has not joined a session yet");
 			return session.send(message);
 		}
-	});
-	session = await joinSession({ canvases: [createCanvas({
-		id: canvas.id,
-		displayName: canvas.title,
-		description: canvas.description,
-		...canvas.inputJsonSchema ? { inputSchema: canvas.inputJsonSchema } : {},
-		actions: [...canvas.actions.values()].filter((action) => action.expose !== "ui").map((action) => ({
-			name: action.name,
-			description: action.description,
-			inputSchema: action.inputJsonSchema,
-			handler: (ctx) => guard(() => host.invoke({
+	}));
+	session = await joinSession({ canvases: hosts.map((host) => {
+		const { canvas } = host;
+		return createCanvas({
+			id: canvas.id,
+			displayName: canvas.title,
+			description: canvas.description,
+			...canvas.inputJsonSchema ? { inputSchema: canvas.inputJsonSchema } : {},
+			actions: [...canvas.actions.values()].filter((action) => action.expose !== "ui").map((action) => ({
+				name: action.name,
+				description: action.description,
+				inputSchema: action.inputJsonSchema,
+				handler: (ctx) => guard(() => host.invoke({
+					instanceId: ctx.instanceId,
+					actionName: action.name,
+					input: ctx.input,
+					source: "agent"
+				}))
+			})),
+			open: (ctx) => guard(() => host.open({
 				instanceId: ctx.instanceId,
-				actionName: action.name,
-				input: ctx.input,
-				source: "agent"
-			}))
-		})),
-		open: (ctx) => guard(() => host.open({
-			instanceId: ctx.instanceId,
-			input: ctx.input
-		})),
-		onClose: (ctx) => guard(() => host.closeInstance(ctx.instanceId))
-	})] });
+				input: ctx.input
+			})),
+			onClose: (ctx) => guard(() => host.closeInstance(ctx.instanceId))
+		});
+	}) });
 	if (warning) log(warning, "warning");
 	const joinedSession = session;
 	joined({
@@ -65,23 +80,23 @@ async function runCanvasExtension(canvas, options) {
 		getEvents: () => joinedSession.getEvents()
 	});
 	const shutdown = () => {
-		host.close().finally(() => process.exit(0));
+		Promise.allSettled(hosts.map((host) => host.close())).finally(() => process.exit(0));
 	};
 	process.once("SIGTERM", shutdown);
 	process.once("SIGINT", shutdown);
 	return {
 		session,
-		host
+		hosts
 	};
 }
 //#endregion
-//#region \0virtual:canvas-kit/extension-entry
-await runCanvasExtension(canvas_entry_default, {
+//#region \0canvas-kit:virtual:canvas-kit/extension/session-summary
+await runCanvasExtension(canvases, {
 	uiDir: new URL("./ui/", import.meta.url),
 	releaseFile: new URL("../../release.json", import.meta.url),
 	plugin: {
 		"name": "session-summary",
-		"version": "0.1.0"
+		"version": "0.2.0"
 	}
 });
 //#endregion

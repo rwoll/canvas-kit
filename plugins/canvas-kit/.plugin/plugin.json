@@ -1,0 +1,7 @@
+{
+  "name": "canvas-kit",
+  "version": "0.2.0",
+  "description": "Skills and example canvases for building Copilot canvases with @rwoll/canvas-kit.",
+  "skills": "skills/",
+  "extensions": "extensions/"
+}

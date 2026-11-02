@@ -1,6 +1,6 @@
 {
   "name": "session-summary",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "An executive summary of this chat's work that the agent keeps up to date on a schedule.",
   "extensions": "extensions/"
 }

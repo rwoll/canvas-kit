@@ -1,6 +1,0 @@
-{
-  "name": "release-board",
-  "version": "0.4.1",
-  "description": "Track release blockers for a repository with the agent.",
-  "extensions": "extensions/"
-}
