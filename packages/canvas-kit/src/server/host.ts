@@ -9,6 +9,7 @@ import {
   parseWith,
   type ActionContext,
   type ActionSource,
+  type AgentActivity,
   type AgentMessage,
   type AnyCanvas,
   type CompiledJob,
@@ -17,6 +18,7 @@ import {
 } from '../define.ts';
 import { CanvasKitError, errorMessage } from '../errors.ts';
 import { JOB_ACTIONS, formatInterval, intervalMs, type Interval, type JobAction, type JobDefinitionInfo, type JobStatus } from '../jobs.ts';
+import { AgentActivityTracker, type CanvasSession, type SessionEventLike } from './activity.ts';
 import { escapeHtml, injectReleaseFooter, insertBefore, type ReleaseInfo } from './release.ts';
 import { StateStore, canvasDataDir, type JobRecord, type StateStoreOptions } from './storage.ts';
 
@@ -27,8 +29,17 @@ export interface CanvasHostOptions {
   dataRoot?: string;
   /** Build shown in the page footer and sent to the UI. */
   release?: ReleaseInfo;
-  /** Delivers `ctx.sendToAgent()` messages. Without it, sending fails with `agent_unavailable`. */
-  sendToAgent?: (message: AgentMessage) => Promise<void>;
+  /**
+   * Delivers `ctx.sendToAgent()` messages, resolving to the message's ID when the
+   * session gives one. Without it, sending fails with `agent_unavailable`.
+   */
+  sendToAgent?: (message: AgentMessage) => Promise<string | void>;
+  /**
+   * The Copilot session the canvas runs in, for `ctx.sessionId` and `ctx.agent`.
+   * May be a promise, since the host is created before the session is joined;
+   * opening waits for it.
+   */
+  session?: CanvasSession | Promise<CanvasSession>;
   log?: (message: string, level: LogLevel) => void;
   /** The clock for `ctx.now()` and job schedules. Defaults to `Date.now`. */
   now?: () => number;
@@ -96,6 +107,8 @@ export interface StateSnapshot {
   state: unknown;
   /** The document's jobs, for a canvas with jobs. */
   jobs?: JobStatus[];
+  /** What the agent in this chat is doing. The host always sets it. */
+  agent?: AgentActivity;
 }
 
 /** Data the server embeds in the page for the client library. */
@@ -146,6 +159,7 @@ interface Instance {
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const HEARTBEAT_MS = 15_000;
+const HISTORY_WAIT_MS = 5_000;
 const INSTANCE_PATH = /^\/c\/([0-9a-f]{32})(\/.*)?$/;
 const CONTENT_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -253,6 +267,11 @@ export class CanvasHost {
   #jobTimer: ReturnType<typeof setInterval> | undefined;
   #ticking = false;
   readonly #now: () => number;
+  readonly #activity: AgentActivityTracker;
+  #session: Promise<CanvasSession | undefined> | undefined;
+  #sessionId: string | undefined;
+  #history: Promise<void> = Promise.resolve();
+  #unsubscribe: (() => void) | undefined;
 
   constructor(canvas: AnyCanvas, options: CanvasHostOptions = {}) {
     if (canvas?.kind !== 'canvas-kit/canvas') throw new Error('Expected a canvas created with defineCanvas()');
@@ -262,10 +281,80 @@ export class CanvasHost {
     this.#dataDir = canvasDataDir(canvas.id, options.dataRoot);
     this.#csp = contentSecurityPolicy(canvas.csp);
     this.#store = canvas.persist ? new StateStore(this.#dataDir, canvas.state, canvas.persist.version, options.store) : undefined;
+    this.#activity = new AgentActivityTracker(this.#now);
+    this.#activity.onChange(() => {
+      for (const instance of this.#instances.values()) this.#send(instance);
+    });
+  }
+
+  /** What the agent in this chat is doing, as `ctx.agent` reports it. */
+  get agent(): AgentActivity {
+    return this.#activity.activity;
+  }
+
+  /** The session's ID once a page has opened, as `ctx.sessionId` reports it. */
+  get sessionId(): string | undefined {
+    return this.#sessionId;
   }
 
   log(message: string, level: LogLevel = 'info') {
     this.#options.log?.(message, level);
+  }
+
+  /**
+   * Join the session once: follow its events, and read its history so work done
+   * before the canvas opened counts too. Live events wait until the history is in.
+   */
+  #connectSession(): Promise<CanvasSession | undefined> {
+    this.#session ??= Promise.resolve(this.#options.session).then(
+      session => {
+        if (session) this.#follow(session);
+        return session;
+      },
+      error => {
+        this.log(`Could not follow the session: ${errorMessage(error)}`, 'warning');
+        return undefined;
+      },
+    );
+    return this.#session;
+  }
+
+  #follow(session: CanvasSession) {
+    this.#sessionId = session.sessionId;
+    let buffered: SessionEventLike[] | undefined = [];
+    this.#unsubscribe = session.on(event => {
+      if (buffered) buffered.push(event);
+      else this.#activity.ingest(event);
+    });
+    this.#history = (async () => {
+      const seen = new Set<string>();
+      try {
+        for (const event of (await session.getEvents?.()) ?? []) {
+          if (typeof event.id === 'string') seen.add(event.id);
+          this.#activity.ingest(event);
+        }
+        this.#activity.historyEnded();
+      } catch (error) {
+        this.log(`Could not read the session history: ${errorMessage(error)}`, 'warning');
+      } finally {
+        for (const event of buffered ?? []) if (typeof event.id !== 'string' || !seen.has(event.id)) this.#activity.ingest(event);
+        buffered = undefined;
+      }
+    })();
+  }
+
+  /** Wait a few seconds at most for the session history, so jobs see earlier activity. */
+  async #historyLoaded(): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const limit = new Promise<void>(done => {
+      timer = setTimeout(done, HISTORY_WAIT_MS);
+      timer.unref();
+    });
+    try {
+      await Promise.race([this.#history, limit]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /** Open or reopen an instance and return the URL of its page. */
@@ -330,6 +419,8 @@ export class CanvasHost {
   async close(): Promise<void> {
     clearInterval(this.#jobTimer);
     this.#jobTimer = undefined;
+    this.#unsubscribe?.();
+    this.#unsubscribe = undefined;
     await Promise.all([...this.#instances.keys()].map(id => this.closeInstance(id)));
     this.#unwatch();
     await this.#stopServer();
@@ -343,6 +434,7 @@ export class CanvasHost {
     if (this.#ticking || this.canvas.jobs.size === 0) return;
     this.#ticking = true;
     try {
+      await this.#historyLoaded();
       const slots = new Set([...this.#instances.values()].map(instance => instance.slot));
       for (const slot of slots) {
         for (const entry of this.#entries(slot.jobs)) {
@@ -371,6 +463,7 @@ export class CanvasHost {
       throw new CanvasKitError('invalid_input', `${id} takes input, so only the jobs added from it run; pass one of their IDs`);
     }
     const slot = await this.#slotForJob(options);
+    await this.#historyLoaded();
     const outcome = await this.#withLock(slot.lock, () => this.#runJobFor(slot, id, options.force ?? true, options.headless ?? false));
     if (!outcome) throw new CanvasKitError('not_found', `No job ${id} in this document`);
     return outcome;
@@ -384,6 +477,7 @@ export class CanvasHost {
   async runJobs(selector: string | undefined, options: RunJobOptions = {}): Promise<JobOutcome[]> {
     if (selector !== undefined) this.#jobFor(selector);
     const slot = await this.#slotForJob(options);
+    await this.#historyLoaded();
     const outcomes: JobOutcome[] = [];
     const selected = this.#entries(slot.jobs).filter(entry => selector === undefined || entry.id === selector || entry.job.name === selector);
     for (const entry of selected) {
@@ -692,6 +786,7 @@ export class CanvasHost {
     return {
       revision: slot.revision,
       state: slot.state,
+      agent: this.#activity.activity,
       ...(this.canvas.jobs.size > 0 && { jobs: this.#entries(slot.jobs).map(entry => this.#jobStatus(entry)) }),
     };
   }
@@ -828,12 +923,20 @@ export class CanvasHost {
       if (!force && !this.#due(entry)) return this.#enabled(entry) ? outcome : { ...outcome, paused: true };
       const before = slot.state;
       let changed = false;
+      const activity = this.#activity;
       const ctx: JobContext<unknown> = {
         canvasId: this.canvas.id,
         job: job.name,
         id,
         key: slot.persistKey,
+        instanceIds: [...slot.instances].map(instance => instance.instanceId),
+        sessionId: this.#sessionId,
+        get agent() {
+          return activity.activity;
+        },
         headless,
+        manual: force,
+        every: this.#everyMs(entry),
         lastRunAt: entry.record?.lastRunAt,
         get state() {
           return slot.state;
@@ -895,8 +998,9 @@ export class CanvasHost {
     return async (message: AgentMessage) => {
       const send = this.#options.sendToAgent;
       if (!send) throw new CanvasKitError('agent_unavailable', 'No agent session is connected to this canvas', 503);
+      this.#activity.sending(message.prompt);
       try {
-        await send(message);
+        this.#activity.sent(await send(message));
       } catch (error) {
         throw new CanvasKitError('send_failed', `Could not message the agent: ${errorMessage(error)}`, 502);
       }
@@ -910,12 +1014,13 @@ export class CanvasHost {
 
   #persistKeyFor(instanceId: string, input: unknown): string | undefined {
     if (!this.#store || !this.canvas.persist) return undefined;
-    const key = this.canvas.persist.key({ instanceId, input });
+    const key = this.canvas.persist.key({ instanceId, input, sessionId: this.#sessionId });
     if (typeof key !== 'string' || key.length === 0) throw new Error('persist.key() must return a non-empty string');
     return key;
   }
 
   async #openInstance(instanceId: string, rawInput: unknown): Promise<Instance> {
+    await this.#connectSession();
     const input = await this.#parseOpenInput(rawInput);
     const persistKey = this.#persistKeyFor(instanceId, input);
     const existing = this.#instances.get(instanceId);
@@ -953,7 +1058,11 @@ export class CanvasHost {
         await this.#reopen(slot, instance.instanceId, input);
       } else {
         const init = async () =>
-          parseWith(this.canvas.state, await this.canvas.init({ instanceId: instance.instanceId, input }), 'init() returned invalid state');
+          parseWith(
+            this.canvas.state,
+            await this.canvas.init({ instanceId: instance.instanceId, input, sessionId: this.#sessionId }),
+            'init() returned invalid state',
+          );
         const store = persistKey === undefined ? undefined : this.#store;
         if (store && persistKey !== undefined) {
           // Load or create the document atomically, so every chat starts from the same
@@ -1002,7 +1111,7 @@ export class CanvasHost {
    */
   async #reopen(slot: Slot, instanceId: string, input: unknown) {
     await this.#transact(slot, async () => {
-      const next = await this.canvas.reopen({ instanceId, input, state: slot.state });
+      const next = await this.canvas.reopen({ instanceId, input, state: slot.state, sessionId: this.#sessionId });
       if (next === undefined) return;
       const state = await parseWith(this.canvas.state, next, 'reopen() returned invalid state');
       await this.#persist(slot, state);
@@ -1024,9 +1133,14 @@ export class CanvasHost {
     return this.#transact(slot, async () => {
       const before = slot.state;
       let changed = false;
+      const activity = this.#activity;
       const ctx: ActionContext<unknown> = {
         canvasId: this.canvas.id,
         instanceId: instance.instanceId,
+        sessionId: this.#sessionId,
+        get agent() {
+          return activity.activity;
+        },
         source: request.source,
         get state() {
           return slot.state;

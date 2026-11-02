@@ -2,6 +2,7 @@ import { CanvasError, createCanvas, joinSession, type CanvasJsonSchema } from '@
 import { fileURLToPath } from 'node:url';
 import type { AnyCanvas, LogLevel } from './define.ts';
 import { CanvasKitError, errorMessage } from './errors.ts';
+import type { CanvasSession } from './server/activity.ts';
 import { CanvasHost } from './server/host.ts';
 import { loadRelease } from './server/release.ts';
 
@@ -46,13 +47,17 @@ export async function runCanvasExtension(canvas: AnyCanvas, options: RunCanvasEx
     Promise.resolve(session.log(message, { level })).catch(() => {});
   };
   const { release, warning } = await loadRelease(toPath(options.releaseFile), options.plugin);
+  let joined!: (session: CanvasSession) => void;
   const host = new CanvasHost(canvas, {
     uiDir: toPath(options.uiDir),
     release,
     log,
+    session: new Promise<CanvasSession>(resolve => {
+      joined = resolve;
+    }),
     sendToAgent: async message => {
       if (!session) throw new Error('The canvas has not joined a session yet');
-      await session.send(message);
+      return session.send(message);
     },
   });
 
@@ -79,6 +84,12 @@ export async function runCanvasExtension(canvas: AnyCanvas, options: RunCanvasEx
   });
 
   if (warning) log(warning, 'warning');
+  const joinedSession = session;
+  joined({
+    sessionId: joinedSession.sessionId,
+    on: handler => joinedSession.on(handler),
+    getEvents: () => joinedSession.getEvents(),
+  });
 
   const shutdown = () => {
     host.close().finally(() => process.exit(0));

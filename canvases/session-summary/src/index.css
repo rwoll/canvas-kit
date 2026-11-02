@@ -1,0 +1,158 @@
+body {
+  padding: 24px;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 44rem;
+  margin: 0 auto;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--accent);
+}
+
+h2 {
+  margin: 0 0 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.refresh {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 0.9em;
+}
+
+.schedule {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.schedule.updating {
+  color: var(--accent);
+}
+
+.status {
+  font-weight: 600;
+}
+
+.status-working {
+  color: var(--accent);
+}
+
+.status-blocked {
+  color: var(--danger);
+}
+
+.status-done {
+  color: var(--success);
+}
+
+.notice {
+  font-size: 0.9em;
+  color: var(--muted);
+}
+
+.notice.error {
+  color: var(--danger);
+}
+
+.headline {
+  font-size: 1.2em;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.executive {
+  padding: 12px 16px;
+  border-left: 3px solid var(--accent-border);
+  background: linear-gradient(90deg, var(--accent-bg), transparent);
+}
+
+.items {
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.items li + li {
+  margin-top: 4px;
+}
+
+section[aria-label='Running'] .items {
+  padding: 0;
+  list-style: none;
+}
+
+section[aria-label='Running'] li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.state {
+  flex: none;
+  min-width: 4.5em;
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.state-running {
+  color: var(--accent);
+}
+
+:is(.state-blocked, .state-failed) {
+  color: var(--danger);
+}
+
+.state-done {
+  color: var(--success);
+}
+
+.detail {
+  color: var(--muted);
+}
+
+.attention h2 {
+  color: var(--accent);
+}
+
+.settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: baseline;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 0.9em;
+  color: var(--muted);
+}
+
+.skip {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.skip input {
+  accent-color: var(--accent);
+}

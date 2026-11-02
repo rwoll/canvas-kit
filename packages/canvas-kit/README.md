@@ -201,7 +201,11 @@ export default defineCanvas({
   document and checked under the lock, so with several chats open a job still runs
   once per interval, and an overdue job runs once to catch up.
 - `ctx` has the state, `setState`, `sendToAgent`, `log`, `dataDir`, `now()`, the
-  document `key`, and `lastRunAt`. A job that throws has its changes rolled back
+  document `key`, `lastRunAt`, and what [the agent is doing](#following-the-agent).
+  `ctx.manual` is true when someone asked for the run (Run now, `run_job`, or
+  `--force`) rather than its schedule, `ctx.every` is the interval in use, and
+  `ctx.instanceIds` lists the open instances in this chat, for prompts that ask
+  the agent to call an action. A job that throws has its changes rolled back
   and its error saved with the run time; it runs again at the next interval.
 - A job holds the document's lock while it runs, so actions in every chat wait
   for it. Keep jobs short: fetch slow data before changing state, or do it in
@@ -306,6 +310,44 @@ with `launchctl load ~/Library/LaunchAgents/com.example.flaky-tests-jobs.plist`:
 The job runs on your machine because the documents are there; hosted CI such as
 GitHub Actions cannot reach them. Work that needs the agent needs a live chat.
 
+## Following the agent
+
+A canvas runs inside a chat, so it can see what that chat's agent is doing:
+
+- `ctx.sessionId` is the chat's session ID, in actions, jobs, `init`, `reopen`,
+  and `persist.key`. Return it from `persist.key` to keep one document per chat.
+  It is undefined in the dev server and under `canvas-kit run`.
+- `ctx.agent` is `{ busy, lastActivityAt?, idleSince? }`, in actions and jobs.
+  `busy` is true from the start of a turn until the session is idle, with no
+  sub-agent or shell command running. `lastActivityAt` is when the agent last did
+  work of its own: a message, a tool call, a sub-agent, a question or approval
+  request, a plan or to-do change, or an error. Messages the canvas sent with
+  `ctx.sendToAgent()` and calls to canvas tools do not count, so a canvas can tell
+  its own requests apart from real progress. Work from before the canvas opened
+  counts too.
+- Pages get the same, live, as `useCanvas().agent`.
+
+```ts
+persist: { key: ({ sessionId }) => sessionId ?? 'local' },
+jobs: ({ job }) => ({
+  refresh: job({
+    every: '10m',
+    controls: 'both',
+    run: async (ctx) => {
+      if (ctx.headless) return
+      const quiet = !ctx.agent.busy && (ctx.agent.lastActivityAt ?? 0) <= Date.parse(ctx.state.updatedAt)
+      if (quiet && !ctx.manual) return                   // nothing new to report
+      await ctx.sendToAgent({
+        prompt: `Call update_summary on instance ${ctx.instanceIds.at(-1)} with a summary of this chat.`,
+        mode: 'immediate',                               // delivered even mid-turn
+      })
+    },
+  }),
+}),
+```
+
+The [Session summary canvas](https://github.com/rwoll/canvas-kit/tree/main/canvases/session-summary) is a complete example.
+
 ## Using it from React
 
 ```tsx
@@ -315,7 +357,7 @@ import type canvas from '../server/canvas.ts'
 const { useCanvas, useAction } = createCanvasHooks<typeof canvas>()
 
 function App() {
-  const { state, status } = useCanvas()               // typed state, 'connecting' | 'live' | 'offline'
+  const { state, status, agent } = useCanvas()        // typed state, 'connecting' | 'live' | 'offline', agent activity
   const [addBlocker, { pending, error }] = useAction('add_blocker')
   // addBlocker({ text }) is type-checked against the action's Zod input
 }
@@ -367,6 +409,8 @@ expect(harness.sentToAgent).toEqual([])          // what ctx.sendToAgent() sent
 await harness.runJob('prune_triaged')            // run a job now; tickJobs() runs only due ones
 await harness.invoke('test', 'update_job', { id: 'prune_triaged', enabled: false }, 'ui')   // as useJobs() does
 expect(harness.jobs('test')?.[0]?.enabled).toBe(false)
+harness.sessionEvent('assistant.turn_start')      // drive ctx.agent; session.idle ends the turn
+expect(harness.agent.busy).toBe(true)
 await harness.close()
 ```
 
@@ -397,10 +441,13 @@ test('the user and the agent share the board', async ({ openCanvas, agent, seed 
 | Fixture | What it does |
 | --- | --- |
 | `openCanvas(input?, { instanceId? })` | Opens an instance, points `page` at it, and waits until it is live (`html[data-canvas-status="live"]`). Returns `page`, `url`, `state()`, and `openAnotherPage()`. |
-| `agent` | `invoke(action, input?)` as the agent, `messages` sent with `ctx.sendToAgent()`, and `failNextSend()`. |
+| `agent` | `invoke(action, input?)` as the agent, `messages` sent with `ctx.sendToAgent()`, `failNextSend()`, and `sessionEvent(type, data?)` to drive `ctx.agent`. |
 | `seed(key, state)` | Saves state for a `persist` key before the canvas opens. |
 | `runJob(id, { key?, force?, headless? })` | Runs a job now, by name or added job ID, for the latest instance or a saved document with `key`. |
 | `canvasHarness` | The underlying `createTestCanvas` harness. |
+
+The harness runs in a session with ID `test-session` (or `sessionId`), whose
+earlier events are `history`. `sessionEvent()` works once an instance is open.
 
 Jobs run only through `runJob` and `harness.tickJobs()` in tests. To test
 time-based jobs, pass a clock to both harnesses, `createTestCanvas(canvas, { now })`

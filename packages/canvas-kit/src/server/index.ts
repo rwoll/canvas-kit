@@ -5,4 +5,6 @@ export type { ReleaseInfo } from './release.ts';
 export { StateStore, canvasDataDir, copilotHome } from './storage.ts';
 export type { JobRecord, StateStoreOptions, StoredDocument } from './storage.ts';
 export { runCanvasJob } from './headless.ts';
+export { AgentActivityTracker } from './activity.ts';
+export type { CanvasSession, SessionEventLike } from './activity.ts';
 export type { RunCanvasJobOptions } from './headless.ts';

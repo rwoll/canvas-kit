@@ -21,6 +21,16 @@ export function Markdown({ children, label }: MarkdownProps) {
   )
 }
 
+export interface InlineMarkdownProps {
+  /** One line of Markdown, such as a list item the agent writes: bold, italic, strikethrough, code, and links. */
+  children: string
+}
+
+/** One line of Markdown, without paragraphs or other blocks, for headings and list items. */
+export function InlineMarkdown({ children }: InlineMarkdownProps) {
+  return <>{inline(children)}</>
+}
+
 const FENCE = /^\s*(```|~~~)/
 const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/
 const RULE = /^\s*([-*_])(\s*\1){2,}\s*$/

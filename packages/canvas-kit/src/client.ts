@@ -1,8 +1,9 @@
-import type { AnyCanvas, ActionInput, ActionResult, JobInput, JobStatusOf, JobWithInputName, StateOf, UiActionName } from './define.ts';
+import type { AgentActivity, AnyCanvas, ActionInput, ActionResult, JobInput, JobStatusOf, JobWithInputName, StateOf, UiActionName } from './define.ts';
 import { JOB_ACTIONS, type Interval, type JobDefinitionInfo, type JobStatus } from './jobs.ts';
 import type { ReleaseInfo } from './server/release.ts';
 
 export { formatInterval, intervalMs } from './jobs.ts';
+export type { AgentActivity } from './define.ts';
 export type { Interval, JobControls, JobDefinitionInfo, JobStatus } from './jobs.ts';
 export type { ReleaseInfo } from './server/release.ts';
 
@@ -12,6 +13,8 @@ export interface CanvasSnapshot<S> {
   readonly state: S;
   /** The document's jobs, live; empty for a canvas without jobs. */
   readonly jobs: readonly JobStatus[];
+  /** What the agent in this chat is doing, live. */
+  readonly agent: AgentActivity;
   readonly revision: number;
   readonly status: ConnectionStatus;
   readonly error: string | undefined;
@@ -23,6 +26,7 @@ interface Bootstrap {
   revision: number;
   state: unknown;
   jobs?: JobStatus[];
+  agent?: AgentActivity;
   jobDefinitions?: JobDefinitionInfo[];
   release?: ReleaseInfo;
 }
@@ -61,6 +65,7 @@ function readBootstrap(): Bootstrap {
   return JSON.parse(element.textContent) as Bootstrap;
 }
 
+const IDLE: AgentActivity = { busy: false };
 const delay = (ms: number) => new Promise(done => setTimeout(done, ms));
 
 /**
@@ -81,6 +86,7 @@ export class CanvasClient<C extends AnyCanvas = AnyCanvas> {
     this.#snapshot = {
       state: bootstrap.state as StateOf<C>,
       jobs: bootstrap.jobs ?? [],
+      agent: bootstrap.agent ?? IDLE,
       revision: bootstrap.revision,
       status: 'connecting',
       error: undefined,
@@ -200,8 +206,15 @@ export class CanvasClient<C extends AnyCanvas = AnyCanvas> {
           .map(line => line.slice(5).trimStart())
           .join('\n');
         if (!data) continue;
-        const snapshot = JSON.parse(data) as { revision: number; state: StateOf<C>; jobs?: JobStatus[] };
-        this.#update({ state: snapshot.state, jobs: snapshot.jobs ?? [], revision: snapshot.revision, status: 'live', error: undefined });
+        const snapshot = JSON.parse(data) as { revision: number; state: StateOf<C>; jobs?: JobStatus[]; agent?: AgentActivity };
+        this.#update({
+          state: snapshot.state,
+          jobs: snapshot.jobs ?? [],
+          agent: snapshot.agent ?? IDLE,
+          revision: snapshot.revision,
+          status: 'live',
+          error: undefined,
+        });
       }
     }
   }

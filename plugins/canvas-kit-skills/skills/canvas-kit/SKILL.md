@@ -109,6 +109,13 @@ Rules:
   `controls` and a job with `input` when they should choose what runs and how
   often. The agent then gets `list_jobs`, `update_job`, `run_job`, `add_job`, and
   `remove_job` actions.
+- To follow the chat's agent, read `ctx.agent` (`busy`, `lastActivityAt`,
+  `idleSince`) in actions and jobs, and `useCanvas().agent` in the UI. Messages the
+  canvas sent and canvas tool calls never count as the agent's work. For one
+  document per chat, use `persist: { key: ({ sessionId }) => sessionId ?? 'local' }`.
+  A job that asks the agent to call an action names the instance from
+  `ctx.instanceIds`; `ctx.manual` tells a Run now apart from the schedule.
+  `canvases/session-summary` in rwoll/canvas-kit shows all of this.
 
 ## 3. Build the UI: `src/App.tsx`
 

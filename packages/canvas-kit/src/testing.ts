@@ -1,8 +1,9 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ActionInput, ActionResult, ActionsOf, AgentMessage, AnyCanvas, JobName, JobStatusOf, StateOf } from './define.ts';
+import type { ActionInput, ActionResult, ActionsOf, AgentActivity, AgentMessage, AnyCanvas, JobName, JobStatusOf, StateOf } from './define.ts';
 import type { JobAction } from './jobs.ts';
+import type { SessionEventLike } from './server/activity.ts';
 import { CanvasHost, type JobOutcome, type OpenResult, type RunJobOptions } from './server/host.ts';
 import type { ReleaseInfo } from './server/release.ts';
 import type { StateStoreOptions } from './server/storage.ts';
@@ -22,6 +23,16 @@ export interface TestCanvas<C extends AnyCanvas> {
   readonly dataRoot: string;
   /** Messages actions sent with `ctx.sendToAgent()`, oldest first. */
   readonly sentToAgent: AgentMessage[];
+  /** The test session's ID, as `ctx.sessionId` reports it. */
+  readonly sessionId: string;
+  /** What the agent is doing, as `ctx.agent` reports it. */
+  readonly agent: AgentActivity;
+  /**
+   * Deliver a session event, such as `assistant.turn_start`, `tool.execution_start`
+   * with `{ toolName }`, or `session.idle`, to drive `ctx.agent`. Its time defaults to the
+   * harness clock.
+   */
+  sessionEvent(type: string, data?: Record<string, unknown>, at?: number): void;
   open(instanceId: string, input?: unknown): Promise<OpenResult>;
   invoke<K extends HarnessAction<C>>(
     instanceId: string,
@@ -48,7 +59,11 @@ export interface TestCanvasOptions {
   dataRoot?: string;
   release?: ReleaseInfo;
   /** Replace the default recorder, for example to simulate a failed send. */
-  sendToAgent?: (message: AgentMessage) => Promise<void>;
+  sendToAgent?: (message: AgentMessage) => Promise<string | void>;
+  /** The session's ID. Defaults to `test-session`. */
+  sessionId?: string;
+  /** Session events from before the canvas opened, read like the session history. */
+  history?: SessionEventLike[];
   /** The clock for `ctx.now()` and job schedules. */
   now?: () => number;
   /** Run due jobs on a timer (`auto`) or only through `runJob` and `tickJobs` (`manual`, the default). */
@@ -65,7 +80,18 @@ export async function createTestCanvas<C extends AnyCanvas>(canvas: C, options: 
   const ownsData = !options.dataRoot;
   const dataRoot = options.dataRoot ?? (await mkdtemp(join(tmpdir(), 'canvas-kit-test-')));
   const sentToAgent: AgentMessage[] = [];
+  const sessionId = options.sessionId ?? 'test-session';
+  const now = options.now ?? Date.now;
+  const handlers = new Set<(event: SessionEventLike) => void>();
   const host = new CanvasHost(canvas, {
+    session: {
+      sessionId,
+      on: handler => {
+        handlers.add(handler);
+        return () => handlers.delete(handler);
+      },
+      getEvents: async () => options.history ?? [],
+    },
     uiDir: options.uiDir,
     dataRoot,
     release: options.release,
@@ -73,6 +99,7 @@ export async function createTestCanvas<C extends AnyCanvas>(canvas: C, options: 
       options.sendToAgent ??
       (async message => {
         sentToAgent.push(message);
+        return `message-${sentToAgent.length}`;
       }),
     now: options.now,
     jobs: options.jobs ?? 'manual',
@@ -82,6 +109,13 @@ export async function createTestCanvas<C extends AnyCanvas>(canvas: C, options: 
     host,
     dataRoot,
     sentToAgent,
+    sessionId,
+    get agent() {
+      return host.agent;
+    },
+    sessionEvent: (type, data = {}, at = now()) => {
+      for (const handler of handlers) handler({ type, data, timestamp: new Date(at).toISOString() });
+    },
     open: (instanceId, input) => host.open({ instanceId, input }),
     invoke: (instanceId, action, input, source = 'agent') =>
       host.invoke({ instanceId, actionName: action, input, source }) as never,
