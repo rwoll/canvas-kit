@@ -1,0 +1,36 @@
+{
+  "name": "__NAME__",
+  "version": "0.1.0",
+  "description": "__DESCRIPTION__",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "new-canvas": "canvas-kit new",
+    "build": "vite build && canvas-kit build",
+    "typecheck": "tsc -p .",
+    "test": "vitest run --passWithNoTests",
+    "e2e": "playwright test",
+    "playwright:install": "playwright install chromium",
+    "check": "pnpm build && pnpm typecheck && pnpm test",
+    "release": "canvas-kit release"
+  },
+  "dependencies": {
+    "@rwoll/canvas-kit": "",
+    "react": "",
+    "react-dom": ""
+  },
+  "devDependencies": {
+    "@playwright/test": "",
+    "@types/node": "",
+    "@types/react": "",
+    "@types/react-dom": "",
+    "typescript": "",
+    "vite": "",
+    "vitest": ""
+  }
+}

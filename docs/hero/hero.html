@@ -503,14 +503,14 @@
       </div>
     </section>
 
-    <p class="caption">The same React <span class="pill mono">&lt;Markdown&gt;</span> component renders the agent's notes in every canvas, from your shared <span class="mono">ui/</span> package</p>
+    <p class="caption">The same React <span class="pill mono">&lt;Markdown&gt;</span> component renders the agent's notes in every canvas, from your shared <span class="mono">ui/</span> folder</p>
 
     <p class="repo-label">In your repo</p>
     <section class="repo">
       <article class="feature">
         <h4>React components <span>· typed hooks, shared UI</span></h4>
-<pre class="mono"><span class="file">src/App.tsx</span>
-<span class="k">import</span> { Checklist, Markdown } <span class="k">from</span> <span class="s">'@acme/ui'</span>
+<pre class="mono"><span class="file">canvases/board/App.tsx</span>
+<span class="k">import</span> { Checklist, Markdown } <span class="k">from</span> <span class="s">'../../ui'</span>
 <span class="k">const</span> { state } = useCanvas()   <span class="c">// live, typed</span>
 
 &lt;<span class="k">Markdown</span>&gt;{state.notes}&lt;/<span class="k">Markdown</span>&gt;
@@ -518,7 +518,7 @@
       </article>
       <article class="feature">
         <h4>Tested in a real browser <span>· Playwright fixtures</span></h4>
-<pre class="mono"><span class="file">e2e/board.spec.ts</span>
+<pre class="mono"><span class="file">canvases/board/canvas.spec.ts</span>
 <span class="k">await</span> agent.invoke(<span class="s">'add_blocker'</span>, { text })
 <span class="k">await</span> expect(page.getByRole(<span class="s">'listitem'</span>))
   .toHaveCount(<span class="s">1</span>)
@@ -529,11 +529,11 @@
         <h4>Shared prebuilt <span>· one push, no build for your team</span></h4>
 <pre class="mono"><span class="file">terminal</span>
 <span class="c">$</span> git push                      <span class="c"># you</span>
-<span class="ok">✓</span> Built 3 canvases, published to stable
+<span class="ok">✓</span> Built 3 canvases into 1 plugin, published
 
 <span class="c">$</span> copilot plugin marketplace add acme/kit#stable
-<span class="c">$</span> copilot plugin install release-board@acme
-<span class="ok">✓</span> Plugin "release-board" installed</pre>
+<span class="c">$</span> copilot plugin install kit@acme
+<span class="ok">✓</span> Plugin "kit" installed</pre>
       </article>
     </section>
   </body>

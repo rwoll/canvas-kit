@@ -6,6 +6,15 @@ import type { CanvasSession } from './server/activity.ts';
 import { CanvasHost } from './server/host.ts';
 import { loadRelease } from './server/release.ts';
 
+/** A canvas in a plugin, with the page its UI is built to. */
+export interface PluginCanvas {
+  /** The canvas's folder name. */
+  name: string;
+  canvas: AnyCanvas;
+  /** Its page in the UI folder, such as `release-board.html`. Defaults to `index.html`. */
+  page?: string;
+}
+
 export interface RunCanvasExtensionOptions {
   /** Folder with the built UI, usually `new URL('./ui/', import.meta.url)`. */
   uiDir: URL | string;
@@ -15,10 +24,10 @@ export interface RunCanvasExtensionOptions {
   releaseFile: URL | string;
 }
 
-/** What `runCanvasExtension` returns: the joined session and the canvas host. */
+/** What `runCanvasExtension` returns: the joined session and a host for each canvas. */
 export interface RunningCanvasExtension {
   session: Awaited<ReturnType<typeof joinSession>>;
-  host: CanvasHost;
+  hosts: CanvasHost[];
 }
 
 const toPath = (value: URL | string) => (typeof value === 'string' ? value : fileURLToPath(value));
@@ -37,10 +46,23 @@ const guard = <T>(run: () => T | Promise<T>): Promise<T> =>
     });
 
 /**
- * Register a canvas with the current Copilot session. The kit's Vite build
- * generates the extension entry that calls this; canvases do not call it directly.
+ * Register a plugin's canvases with the current Copilot session, in one process.
+ * The kit's Vite build generates the extension entry that calls this; canvases do
+ * not call it directly.
  */
-export async function runCanvasExtension(canvas: AnyCanvas, options: RunCanvasExtensionOptions): Promise<RunningCanvasExtension> {
+export async function runCanvasExtension(
+  canvases: AnyCanvas | readonly (AnyCanvas | PluginCanvas)[],
+  options: RunCanvasExtensionOptions,
+): Promise<RunningCanvasExtension> {
+  const entries = (Array.isArray(canvases) ? canvases : [canvases]).map((entry: AnyCanvas | PluginCanvas) =>
+    'kind' in entry ? { canvas: entry, page: undefined } : entry,
+  );
+  const ids = new Set<string>();
+  for (const { canvas } of entries) {
+    if (ids.has(canvas.id)) throw new Error(`Two canvases in ${options.plugin.name} have the ID ${canvas.id}`);
+    ids.add(canvas.id);
+  }
+
   let session: Awaited<ReturnType<typeof joinSession>> | undefined;
   const log = (message: string, level: LogLevel) => {
     if (!session) return;
@@ -48,22 +70,28 @@ export async function runCanvasExtension(canvas: AnyCanvas, options: RunCanvasEx
   };
   const { release, warning } = await loadRelease(toPath(options.releaseFile), options.plugin);
   let joined!: (session: CanvasSession) => void;
-  const host = new CanvasHost(canvas, {
-    uiDir: toPath(options.uiDir),
-    release,
-    log,
-    session: new Promise<CanvasSession>(resolve => {
-      joined = resolve;
-    }),
-    sendToAgent: async message => {
-      if (!session) throw new Error('The canvas has not joined a session yet');
-      return session.send(message);
-    },
+  const sessionReady = new Promise<CanvasSession>(resolve => {
+    joined = resolve;
   });
+  const hosts = entries.map(
+    ({ canvas, page }) =>
+      new CanvasHost(canvas, {
+        uiDir: toPath(options.uiDir),
+        ...(page && { indexFile: page }),
+        release,
+        log,
+        session: sessionReady,
+        sendToAgent: async message => {
+          if (!session) throw new Error('The canvas has not joined a session yet');
+          return session.send(message);
+        },
+      }),
+  );
 
   session = await joinSession({
-    canvases: [
-      createCanvas({
+    canvases: hosts.map(host => {
+      const { canvas } = host;
+      return createCanvas({
         id: canvas.id,
         displayName: canvas.title,
         description: canvas.description,
@@ -79,8 +107,8 @@ export async function runCanvasExtension(canvas: AnyCanvas, options: RunCanvasEx
           })),
         open: ctx => guard(() => host.open({ instanceId: ctx.instanceId, input: ctx.input })),
         onClose: ctx => guard(() => host.closeInstance(ctx.instanceId)),
-      }),
-    ],
+      });
+    }),
   });
 
   if (warning) log(warning, 'warning');
@@ -92,9 +120,9 @@ export async function runCanvasExtension(canvas: AnyCanvas, options: RunCanvasEx
   });
 
   const shutdown = () => {
-    host.close().finally(() => process.exit(0));
+    Promise.allSettled(hosts.map(host => host.close())).finally(() => process.exit(0));
   };
   process.once('SIGTERM', shutdown);
   process.once('SIGINT', shutdown);
-  return { session, host };
+  return { session, hosts };
 }

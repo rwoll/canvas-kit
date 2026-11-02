@@ -22,8 +22,8 @@ share. See the [project README](https://github.com/rwoll/canvas-kit#readme) for
 screenshots and example canvases.
 
 A canvas is an interactive panel that the agent opens with `open_canvas` and
-drives with `invoke_canvas_action`. A canvas package declares its state and
-actions once, and the kit supplies everything else. This guide covers the API.
+drives with `invoke_canvas_action`. Each canvas declares its state and actions
+once, and the kit supplies everything else. This guide covers the API.
 
 ## Quickstart
 
@@ -31,7 +31,7 @@ actions once, and the kit supplies everything else. This guide covers the API.
 npm create @rwoll/canvas my-marketplace -- --repository me/my-marketplace --canvas release-board
 cd my-marketplace
 pnpm install
-pnpm --filter release-board dev   # the canvas in a browser, with live actions
+pnpm dev                          # every canvas in a browser, with live actions
 pnpm check                        # build, typecheck, unit tests
 ```
 
@@ -40,8 +40,7 @@ Push it to GitHub and every push to `main` publishes the marketplace to the
 `copilot plugin marketplace add me/my-marketplace#stable`.
 
 Add more canvases with `pnpm new-canvas <name>` (`canvas-kit new`). You edit two
-files per canvas: `server/canvas.ts` for state and actions, and `src/App.tsx` for
-the UI.
+files per canvas: `canvas.ts` for state and actions, and `App.tsx` for the UI.
 
 ## What the kit provides
 
@@ -62,16 +61,18 @@ the UI.
   canvas open, once per interval across chats, and `canvas-kit run` runs them with
   no chat open, from launchd or cron. Users and the agent can pause, retime, run,
   and add jobs when the canvas allows it.
-- **Build**: one `vite build` writes an installable plugin to `dist/plugin/`:
-  the React UI, a single bundled `extension.mjs` (dependencies included; only the
-  host-provided `@github/copilot-sdk` and Node.js built-ins stay external), the
-  plugin manifest generated from `package.json`, and `canvas.mjs`, the definition
-  without the SDK, for `canvas-kit run`.
-- **Dev server**: `vite` serves the UI with the canvas definition running
-  in-process, so actions and live updates work in a normal browser. To preview
-  what only the agent can do, such as a tour, run an agent action with a
-  same-origin `POST /__canvas/dev/agent/<action>` and a JSON body. This route
-  exists only in the dev server.
+- **Build**: one `vite build` writes an installable plugin to `dist/plugins/<name>/`
+  with every canvas and the project's skills: a page per canvas, with React and
+  shared code loaded once; a single bundled `extension.mjs` that registers every
+  canvas in one process (dependencies included; only the host-provided
+  `@github/copilot-sdk` and Node.js built-ins stay external); the plugin manifest
+  generated from `package.json`; and `canvas.mjs`, the definitions without the
+  SDK, for `canvas-kit run`.
+- **Dev server**: `vite` serves every canvas at `/<name>/`, with a list at `/`, and
+  runs the canvas definitions in-process, so actions and live updates work in a
+  normal browser. To preview what only the agent can do, such as a tour, run an
+  agent action with a same-origin `POST /<name>/__canvas/dev/agent/<action>` and a
+  JSON body. This route exists only in the dev server.
 - **Version footer**: every page has a small footer pinned to the bottom of the
   viewport, such as
   `changeset-review v0.3.0 · Published Oct 22, 2026, 7:41 PM`. The version comes from
@@ -84,21 +85,48 @@ the UI.
   plugin marketplace, and publishes it to a branch. A reusable GitHub Actions
   workflow runs it on every push.
 
-## Canvas package layout
+## Project layout
+
+A project is one package. Every folder in `canvases/` with a `canvas.ts` is a canvas:
 
 ```text
+package.json           name, version, and description become the plugin manifest
+vite.config.ts         plugins: [canvasKit()]
+tsconfig.json          { "extends": "@rwoll/canvas-kit/tsconfig/project.json" }
+playwright.config.ts   export default defineCanvasConfig()
 canvases/<name>/
-  package.json         name, version, and description become the plugin manifest
-  index.html           Vite entry
-  vite.config.ts       plugins: [canvasKit()]
-  server/canvas.ts     export default defineCanvas({...})   (Node.js)
-  server/*.test.ts     unit tests (Vitest)
-  src/                 React UI; import only types from server/
-  e2e/*.spec.ts        browser tests (Playwright)
-  playwright.config.ts export default defineCanvasConfig()
+  canvas.ts            export default defineCanvas({...})   (Node.js)
+  App.tsx              export default function App() {...}   (its React UI)
+  *.test.ts            unit tests (Vitest)
+  *.spec.ts            browser tests (Playwright)
+ui/                    components and a theme the canvases share
+skills/<name>/SKILL.md skills that ship in the plugin
 ```
 
-The folder name is the plugin name and extension folder name.
+The kit generates each canvas's page and entry, so there is no `index.html` or
+`main.tsx`. `App.tsx` imports its own CSS and uses `import type` for `canvas.ts`.
+Folder names are kebab-case. Restart `pnpm dev` after adding a canvas.
+
+### Plugins
+
+`vite build` writes one plugin named after the package (without its scope), with
+every canvas and the skills. Its canvases run in one extension process per chat.
+To let people install some canvases on their own, list them as their own plugins;
+the other canvases and the skills stay in the main one:
+
+```ts
+// vite.config.ts
+canvasKit({
+  name: 'my-canvases',     // the main plugin's name; defaults to the package.json name
+  plugins: [
+    { name: 'session-summary', description: 'An executive summary of the chat.', canvases: ['session-summary'] },
+  ],
+  devInput: { 'release-board': { repo: 'octo/app' } },   // open_canvas input for `pnpm dev`, by canvas
+})
+```
+
+Every plugin gets the package's version unless it sets `version`. Plugin names
+must be unique in the marketplace.
 
 ## Defining a canvas
 
@@ -274,12 +302,13 @@ Jobs run with `ctx.headless` set, where `sendToAgent` fails. It uses the same lo
 so it is safe while chats have the canvas open.
 
 ```sh
-# In a canvas package after `pnpm build`, or with --plugin for an installed plugin
+# In a project after `pnpm build`, or with --plugin for an installed plugin
 npx @rwoll/canvas-kit run
-npx @rwoll/canvas-kit run prune_triaged --plugin ~/.copilot/installed-plugins/my-marketplace/flaky-tests
+npx @rwoll/canvas-kit run prune_triaged --canvas flaky-tests --plugin ~/.copilot/installed-plugins/my-marketplace/my-canvases
 ```
 
-In a canvas package, `npx` runs the `@rwoll/canvas-kit` it installed; elsewhere it
+Pass `--canvas` (a folder name or canvas ID) when the plugins have several canvases.
+In a project, `npx` runs the `@rwoll/canvas-kit` it installed; elsewhere it
 downloads it. Always give the scoped name: the unscoped `canvas-kit` on npm is a
 different package.
 
@@ -287,7 +316,7 @@ Run it at least as often as the shortest interval users may pick. For example,
 every 15 minutes with cron (`crontab -e`):
 
 ```text
-*/15 * * * * cd ~/canvases/flaky-tests && npx @rwoll/canvas-kit run >> /tmp/flaky-tests-jobs.log 2>&1
+*/15 * * * * cd ~/my-canvases && npx @rwoll/canvas-kit run --canvas flaky-tests >> /tmp/flaky-tests-jobs.log 2>&1
 ```
 
 Or with a launchd agent on macOS, in `~/Library/LaunchAgents/com.example.flaky-tests-jobs.plist`, loaded
@@ -299,9 +328,9 @@ with `launchctl load ~/Library/LaunchAgents/com.example.flaky-tests-jobs.plist`:
 <plist version="1.0">
 <dict>
   <key>Label</key><string>com.example.flaky-tests-jobs</string>
-  <key>WorkingDirectory</key><string>/Users/me/canvases/flaky-tests</string>
+  <key>WorkingDirectory</key><string>/Users/me/my-canvases</string>
   <key>ProgramArguments</key>
-  <array><string>/opt/homebrew/bin/npx</string><string>@rwoll/canvas-kit</string><string>run</string></array>
+  <array><string>/opt/homebrew/bin/npx</string><string>@rwoll/canvas-kit</string><string>run</string><string>--canvas</string><string>flaky-tests</string></array>
   <key>StartInterval</key><integer>900</integer>
 </dict>
 </plist>
@@ -352,11 +381,12 @@ The [Session summary canvas](https://github.com/rwoll/canvas-kit/tree/main/canva
 
 ```tsx
 import { createCanvasHooks } from '@rwoll/canvas-kit/react'
-import type canvas from '../server/canvas.ts'
+import type canvas from './canvas.ts'
+import './App.css'
 
 const { useCanvas, useAction } = createCanvasHooks<typeof canvas>()
 
-function App() {
+export default function App() {
   const { state, status, agent } = useCanvas()        // typed state, 'connecting' | 'live' | 'offline', agent activity
   const [addBlocker, { pending, error }] = useAction('add_blocker')
   // addBlocker({ text }) is type-checked against the action's Zod input
@@ -365,9 +395,10 @@ function App() {
 
 `state` is available on the first render because the server embeds it in the
 page. `useJobs()` shows and controls scheduled jobs; see
-[Letting people control jobs](#letting-people-control-jobs). Import `@rwoll/canvas-kit/styles.css` for the shared light/dark theme.
+[Letting people control jobs](#letting-people-control-jobs). Every page loads
+`@rwoll/canvas-kit/styles.css`, the shared light/dark theme, before `App.tsx`.
 
-UI code runs in the browser. The build fails if `src/` imports a Node.js module;
+UI code runs in the browser. The build fails if UI code imports a Node.js module;
 do that work in an action instead.
 
 Keep canvas UIs flat and quiet, in the style of the Session summary canvas.
@@ -379,20 +410,24 @@ tinted executive summary, is the exception.
 
 ## Sharing components and a theme
 
-A marketplace's `ui/` package holds the React components and the theme its canvases
-share. `canvas-kit init` creates it (`@<marketplace>/ui`), `canvas-kit ui` adds it to
-an existing marketplace, and `canvas-kit new` makes each new canvas depend on it,
-import its `theme.css`, and use its `Header`.
+A project's `ui/` folder holds the React components and the theme its canvases
+share. `canvas-kit init` creates it, `canvas-kit ui` adds it to an existing project,
+and `canvas-kit new` makes each new canvas import its `theme.css` and use its `Header`.
 
 ```text
-ui/package.json    "name": "@my-canvases/ui", "exports": { ".": "./src/index.ts", "./theme.css": "./theme.css" }
+ui/index.ts        exports Header, Markdown, Checklist, TextButton; add your own
 ui/theme.css       brand variables (--accent, --accent-contrast, ...) and component styles
-ui/src/            Header, Markdown, Checklist, TextButton; add your own
 ```
 
-`theme.css` overrides the variables of `@rwoll/canvas-kit/styles.css`, so import it
-second. It is plain TypeScript source in the workspace: each canvas's Vite build
-bundles it, so the published plugins need nothing extra at run time.
+```tsx
+// canvases/<name>/App.tsx
+import { Header, Markdown } from '../../ui'
+import '../../ui/theme.css'
+```
+
+`theme.css` overrides the variables of `@rwoll/canvas-kit/styles.css`, which every
+page loads first. The build bundles `ui/` with the canvases, and code they share
+loads once, so the published plugins need nothing extra at run time.
 
 ## Testing
 
@@ -416,12 +451,14 @@ await harness.close()
 
 Browser tests use Playwright fixtures against the **built** canvas, so they run
 with the same Content-Security-Policy and bundling as the installed plugin.
-Build first (`pnpm build`) and install Chromium once (`pnpm -r --workspace-concurrency=1 run playwright:install`).
+Build first (`pnpm build`) and install Chromium once (`pnpm playwright:install`).
+Put the specs in the canvas's folder: `canvasTest()` finds the canvas's built page in
+`dist/plugins/` from the spec's folder (or pass `name`).
 
 ```ts
-// e2e/board.spec.ts
+// canvases/release-board/canvas.spec.ts
 import { canvasTest, expect } from '@rwoll/canvas-kit/playwright'
-import canvas from '../server/canvas.ts'
+import canvas from './canvas.ts'
 
 const test = canvasTest(canvas)
 
@@ -453,15 +490,16 @@ Jobs run only through `runJob` and `harness.tickJobs()` in tests. To test
 time-based jobs, pass a clock to both harnesses, `createTestCanvas(canvas, { now })`
 and `canvasTest(canvas, { now })`, and move it forward between steps.
 
-`defineCanvasConfig(overrides?)` in `playwright.config.ts` runs `e2e/` in light,
-dark, and high-contrast Chromium. Canvas UIs show server state, so after a click,
+`defineCanvasConfig(overrides?)` in `playwright.config.ts` runs `canvases/**/*.spec.ts`
+in light, dark, and high-contrast Chromium. Canvas UIs show server state, so after a click,
 assert with web-first assertions such as `toBeChecked()` rather than `check()`,
-which expects the change at the moment of the click. Vitest skips `e2e/`.
+which expects the change at the moment of the click. Vitest runs only `*.test.ts`.
 
 ## The canvas-kit command
 
-A marketplace repository has `marketplace.config.json`, content-only plugins in
-`plugins/<name>/` (skills, agents, MCP servers), and canvases in `canvases/<name>/`.
+A marketplace repository is a project (see [Project layout](#project-layout)) with
+`marketplace.config.json` and, optionally, other plugins in `plugins/<name>/`, such
+as agents or MCP servers.
 
 ```json
 {
@@ -475,15 +513,14 @@ A marketplace repository has `marketplace.config.json`, content-only plugins in
 
 | Command | What it does |
 | --- | --- |
-| `canvas-kit init <dir> --repository owner/name [--canvas name]` | Creates a marketplace repository with a shared `ui/` package (what `npm create @rwoll/canvas` runs). |
-| `canvas-kit new <name> [--title] [--description] [--id] [--catalog] [--kit <range>]` | Adds a canvas package, wired to the shared UI package when the config names one. `--catalog` writes pnpm `catalog:` ranges. |
-| `canvas-kit ui <package-name> [--catalog]` | Adds a shared UI package (`ui/`) to an existing marketplace and records it as `ui`. |
-| `canvas-kit build` | Assembles `dist/marketplace` from `plugins/` and each canvas's `dist/plugin`, with a catalog generated from the plugin manifests. |
-| `canvas-kit run [job] [--plugin] [--canvas] [--key] [--force] [--data-root]` | Runs a canvas's due jobs (or one job by name or ID) for its saved documents with no chat open, from a built plugin (`./dist/plugin` by default). Exits non-zero when a run fails. |
+| `canvas-kit init <dir> --repository owner/name [--canvas name]` | Creates a marketplace repository: one project with a shared `ui/` folder (what `npm create @rwoll/canvas` runs). |
+| `canvas-kit new <name> [--title] [--description] [--id]` | Adds `canvases/<name>/`, using the shared `ui/` folder when there is one. |
+| `canvas-kit ui` | Adds a shared `ui/` folder to an existing project. |
+| `canvas-kit build` | Assembles `dist/marketplace` from `plugins/` and the plugins `vite build` wrote to `dist/plugins/`, with a catalog generated from the plugin manifests. |
+| `canvas-kit run [job] [--plugin] [--canvas] [--key] [--force] [--data-root]` | Runs a canvas's due jobs (or one job by name or ID) for its saved documents with no chat open, from the plugins in `./dist/plugins` or `--plugin`. `--canvas` picks the canvas by folder name or ID. Exits non-zero when a run fails. |
 | `canvas-kit release [--dry-run] [--skip-checks]` | Builds the source branch in a clean worktree with a frozen-lockfile install, runs the `check` script (or `build`), and commits the output to the publish branch only when it changed. Each plugin gets a `release.json` stamp that the version footer shows. |
 
-Optional config: `ui` (the shared UI package new canvases use), `pluginsDir`,
-`canvasesDir`, `outDir`, `checkScript`, and
+Optional config: `pluginsDir`, `outDir`, `checkScript`, and
 `installCommand`, `checkCommand`, or `buildCommand` to replace the detected
 package manager commands. The library behind the command is
 `@rwoll/canvas-kit/cli`.

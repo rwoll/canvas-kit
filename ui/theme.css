@@ -9,6 +9,10 @@
   --accent-border: rgba(138, 43, 226, 0.5);
 }
 
+body {
+  padding: 24px;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --accent: #c084fc;

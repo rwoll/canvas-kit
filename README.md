@@ -14,7 +14,7 @@ and actions in TypeScript, UI in React, and canvas-kit handles the rest.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/hero-dark.png">
-  <img alt="A Copilot window: the chat opens three canvases (Release board, Flaky tests, PR queue) that each render the agent's notes with the same shared React Markdown component. Below, in your repo: a React component that imports Markdown and Checklist from a shared ui package and reads live state with a typed useCanvas hook, a Playwright test passing in light, dark, and high-contrast, and git push publishing prebuilt canvases that a teammate installs with two commands." src="docs/hero-light.png">
+  <img alt="A Copilot window: the chat opens three canvases (Release board, Flaky tests, PR queue) that each render the agent's notes with the same shared React Markdown component. Below, in your repo: a React component that imports Markdown and Checklist from a shared ui folder and reads live state with a typed useCanvas hook, a Playwright test passing in light, dark, and high-contrast, and git push publishing prebuilt canvases that a teammate installs with two commands." src="docs/hero-light.png">
 </picture>
 
 ## What you get
@@ -39,12 +39,11 @@ share.
 
 ```sh
 copilot plugin marketplace add rwoll/canvas-kit#stable
-copilot plugin install release-board@canvas-kit
-copilot plugin install flaky-tests@canvas-kit
-copilot plugin install session-summary@canvas-kit
+copilot plugin install canvas-kit@canvas-kit
 ```
 
-Reload extensions, start a new chat, and ask:
+The `canvas-kit` plugin has the release board and flaky tests example canvases,
+and the skills for building your own. Reload extensions, start a new chat, and ask:
 
 > Open the release board for octo/app and add a blocker: CI is red on main.
 
@@ -65,7 +64,11 @@ Reload extensions, start a new chat, and ask:
   </tr>
 </table>
 
-For a long chat, ask:
+For a long chat, install the Session summary on its own:
+
+```sh
+copilot plugin install session-summary@canvas-kit
+```
 
 > Open the session summary.
 
@@ -84,10 +87,23 @@ since the last summary, so an idle chat costs no model turns.
 npm create @rwoll/canvas my-canvases -- --repository you/my-canvases --canvas release-board
 cd my-canvases
 pnpm install
-pnpm --filter release-board dev      # the canvas in your browser, live
+pnpm dev                             # every canvas in your browser, live
 ```
 
-`server/canvas.ts` holds the state and actions:
+It is one project. Each canvas is a folder in `canvases/`, and the project has one
+`package.json`, `vite.config.ts`, and `tsconfig.json`:
+
+```text
+canvases/release-board/
+  canvas.ts         state and actions
+  App.tsx           its React UI
+  canvas.test.ts    unit tests (Vitest)
+  canvas.spec.ts    browser tests (Playwright)
+ui/                 components and a theme every canvas shares
+skills/             skills that ship with the canvases
+```
+
+`canvas.ts` holds the state and actions:
 
 ```ts
 import { defineCanvas, z } from '@rwoll/canvas-kit'
@@ -119,11 +135,11 @@ export default defineCanvas({
 })
 ```
 
-`src/App.tsx` is the UI, typed from that file:
+`App.tsx` is the UI, typed from that file:
 
 ```tsx
 import { createCanvasHooks } from '@rwoll/canvas-kit/react'
-import type canvas from '../server/canvas.ts'
+import type canvas from './canvas.ts'
 
 const { useCanvas, useAction } = createCanvasHooks<typeof canvas>()
 
@@ -142,14 +158,15 @@ export default function App() {
 }
 ```
 
-Add more canvases with `pnpm new-canvas <name>`.
+Add more canvases with `pnpm new-canvas <name>`. They all ship in one plugin, with
+your skills, and run in one process per chat.
 
 ## Test it
 
 ```ts
-// e2e/canvas.spec.ts: Playwright against the built canvas
+// canvas.spec.ts: Playwright against the built canvas
 import { canvasTest, expect } from '@rwoll/canvas-kit/playwright'
-import canvas from '../server/canvas.ts'
+import canvas from './canvas.ts'
 
 const test = canvasTest(canvas)
 
@@ -171,7 +188,7 @@ pnpm e2e       # Playwright in light, dark, and high contrast
 ## Share it
 
 ```sh
-git push       # publishes every canvas and plugin, prebuilt, to the stable branch
+git push       # publishes your canvases and skills, prebuilt, to the stable branch
 ```
 
 Your team installs them with no build step, and each canvas shows which build it
@@ -179,13 +196,16 @@ runs in a small footer:
 
 ```sh
 copilot plugin marketplace add you/my-canvases#stable
-copilot plugin install release-board@my-canvases
+copilot plugin install my-canvases@my-canvases
 ```
+
+To let people install some canvases on their own, as this repository does with the
+Session summary, list them as a separate plugin in `vite.config.ts`.
 
 ## Let Copilot build it
 
 ```sh
-copilot plugin install canvas-kit-skills@canvas-kit
+copilot plugin install canvas-kit@canvas-kit
 ```
 
 > Build a canvas that lists this week's flaky tests and lets me mark them triaged.
@@ -200,8 +220,9 @@ The skills teach the agent to build, test, and publish canvases.
   [components and theme](packages/canvas-kit/README.md#sharing-components-and-a-theme),
   [testing](packages/canvas-kit/README.md#testing), and
   [publishing](packages/canvas-kit/README.md#github-actions)
-- [Example canvases](canvases) and the [shared `ui/` package](ui) they use
-- [Agent skills](plugins/canvas-kit-skills) for building, testing, and publishing
+- [Example canvases](canvases) and the [shared `ui/` folder](ui) they use
+- [Agent skills](skills) for building, testing, and publishing
+- [Changelog](CHANGELOG.md)
 
 This repository is itself a canvas-kit marketplace. See
 [CONTRIBUTING.md](CONTRIBUTING.md) to work on it, [RELEASING.md](RELEASING.md) for

@@ -17,8 +17,9 @@ it('creates a marketplace with a first canvas', async () => {
   expect(output).toContain('Created my-market');
   const config = JSON.parse(await readFile(join(dir, 'my-market', 'marketplace.config.json'), 'utf8'));
   expect(config).toMatchObject({ name: 'my-market', owner: { name: 'octo' }, repository: 'octo/my-market' });
-  const pkg = JSON.parse(await readFile(join(dir, 'my-market', 'canvases', 'board', 'package.json'), 'utf8'));
-  expect(pkg.name).toBe('board');
+  const pkg = JSON.parse(await readFile(join(dir, 'my-market', 'package.json'), 'utf8'));
+  expect(pkg).toMatchObject({ name: 'my-market', scripts: { dev: 'vite' } });
+  expect(await readFile(join(dir, 'my-market', 'canvases', 'board', 'canvas.ts'), 'utf8')).toContain("id: 'board'");
 });
 
 it('explains what is missing without a terminal to ask in', () => {

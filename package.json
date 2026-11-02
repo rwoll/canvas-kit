@@ -1,5 +1,7 @@
 {
-  "name": "canvas-kit-workspace",
+  "name": "canvas-kit",
+  "version": "0.2.0",
+  "description": "Skills and example canvases for building Copilot canvases with @rwoll/canvas-kit.",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.19.0",
@@ -7,20 +9,32 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "new-canvas": "canvas-kit new --catalog --kit workspace:*",
-    "build": "pnpm -r build && canvas-kit build",
-    "typecheck": "pnpm -r typecheck",
+    "dev": "vite",
+    "new-canvas": "canvas-kit new",
+    "build": "pnpm -r build && vite build && canvas-kit build",
+    "typecheck": "pnpm -r typecheck && tsc -p .",
     "lint": "oxlint",
-    "test": "pnpm -r test",
-    "e2e": "pnpm -r e2e",
+    "test": "pnpm -r test && vitest run canvases ui",
+    "e2e": "playwright test",
+    "playwright:install": "playwright install chromium",
     "check": "pnpm build && pnpm typecheck && pnpm lint && pnpm test",
     "consumer-test": "node scripts/consumer-test.mjs",
     "release": "canvas-kit release",
     "hero": "node docs/hero/render.mjs"
   },
+  "dependencies": {
+    "@rwoll/canvas-kit": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
   "devDependencies": {
     "@playwright/test": "catalog:",
-    "@rwoll/canvas-kit": "workspace:*",
-    "oxlint": "catalog:"
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "oxlint": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
   }
 }

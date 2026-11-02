@@ -56,6 +56,8 @@ export interface TestCanvas<C extends AnyCanvas> {
 
 export interface TestCanvasOptions {
   uiDir?: string;
+  /** The canvas's page in `uiDir`. Defaults to `index.html`. */
+  indexFile?: string;
   dataRoot?: string;
   release?: ReleaseInfo;
   /** Replace the default recorder, for example to simulate a failed send. */
@@ -93,6 +95,7 @@ export async function createTestCanvas<C extends AnyCanvas>(canvas: C, options: 
       getEvents: async () => options.history ?? [],
     },
     uiDir: options.uiDir,
+    indexFile: options.indexFile,
     dataRoot,
     release: options.release,
     sendToAgent:

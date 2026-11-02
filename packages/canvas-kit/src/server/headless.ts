@@ -40,3 +40,31 @@ export async function runCanvasJob(canvas: AnyCanvas, job?: string, options: Run
     await host.close();
   }
 }
+
+/** A canvas in a built plugin, as its generated `canvas.mjs` lists it. */
+export interface PluginCanvasEntry {
+  /** The canvas's folder name. */
+  name: string;
+  canvas: AnyCanvas;
+}
+
+/** The canvas a selector names, by folder name or canvas ID, or the only one. */
+export function pickCanvas<E extends PluginCanvasEntry>(entries: readonly E[], selector?: string): E {
+  const names = entries.map(entry => entry.name).join(', ');
+  if (selector === undefined) {
+    if (entries.length === 1) return entries[0]!;
+    throw new CanvasKitError('invalid_input', `This plugin has several canvases (${names}); pass the one to run, such as --canvas ${entries[0]?.name}.`);
+  }
+  const entry = entries.find(candidate => candidate.name === selector || candidate.canvas.id === selector);
+  if (!entry) throw new CanvasKitError('not_found', `No canvas ${selector} in this plugin. Its canvases: ${names}.`);
+  return entry;
+}
+
+/**
+ * Run scheduled jobs for one canvas of a built plugin, as its `canvas.mjs` does for
+ * `canvas-kit run`. `options.canvas` picks the canvas by folder name or ID.
+ */
+export function runPluginJob(entries: readonly PluginCanvasEntry[], job?: string, options: RunCanvasJobOptions & { canvas?: string } = {}): Promise<JobOutcome[]> {
+  const { canvas, ...rest } = options;
+  return runCanvasJob(pickCanvas(entries, canvas).canvas, job, rest);
+}

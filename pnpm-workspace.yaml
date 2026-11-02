@@ -1,7 +1,5 @@
 packages:
-  - ui
   - packages/*
-  - canvases/*
 
 # Supply-chain hardening. pnpm 11 reads only registry and auth settings from
 # .npmrc, so these live here.
