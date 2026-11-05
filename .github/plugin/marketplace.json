@@ -6,13 +6,13 @@
   "plugins": [
     {
       "name": "canvas-kit",
-      "description": "Skills and example canvases for building Copilot canvases with @rwoll/canvas-kit.",
+      "description": "Moved: install canvas-kit@rwoll from the rwoll/mono-oss#stable marketplace instead. Skills and example canvases for building Copilot canvases with @rwoll/canvas-kit.",
       "version": "0.2.0",
       "source": "./plugins/canvas-kit"
     },
     {
       "name": "session-summary",
-      "description": "An executive summary of this chat's work that the agent keeps up to date on a schedule.",
+      "description": "Moved: install session-summary@rwoll from the rwoll/mono-oss#stable marketplace instead. An executive summary of this chat's work that the agent keeps up to date on a schedule.",
       "version": "0.2.0",
       "source": "./plugins/session-summary"
     }
